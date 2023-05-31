@@ -256,6 +256,15 @@ pub fn main() anyerror!void {
     std.debug.print("Parsed {?}\n", .{second_row});
     const no_row = try csv_parser.next();
     std.debug.print("No field {?}", .{no_row});
+
+    var third_file = try fs.cwd().openFile(file_path, .{});
+    defer third_file.close();
+    const third_reader = third_file.reader();
+
+    var csv_parser_two = try CsvParser(DynStruct).init(allocator, third_reader);
+    while (try csv_parser_two.next()) |row| {
+        std.debug.print("Parsed {}\n", .{row});
+    }
 }
 
 test "basic test" {
