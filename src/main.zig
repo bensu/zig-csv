@@ -78,7 +78,7 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
                 std.debug.print("{}\n", .{draft_t});
             }
         },
-        else => @compileError("T needs to be a struct"),
+        else => @compileError(@typeName(T) ++ " needs to be a struct"),
     }
 
     return outArray;
@@ -168,7 +168,9 @@ pub fn CsvParser(
 
         // Try to read a row and return a parsed T out of it if possible
         pub fn next(self: *Self) NextUserError!?T {
-            var draft_t: T = T.init();
+            // check that T has an init() function
+
+            var draft_t: T = undefined; // T.init();
             var fields_added: u32 = 0;
             inline for (Fields) |F| {
                 const maybe_val = self.csv_tokenizer.next() catch {
@@ -272,13 +274,6 @@ fn parseInt(comptime T: type, inputString: []const u8) ?T {
 const DynStruct = struct {
     id: i64,
     age: []const u8,
-
-    pub fn init() DynStruct {
-        return DynStruct{
-            .id = undefined,
-            .age = undefined,
-        };
-    }
 };
 
 
@@ -323,6 +318,7 @@ pub fn main() anyerror!void {
         }
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
+
     }
 }
 
