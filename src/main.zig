@@ -116,7 +116,7 @@ pub fn CsvParser(
     return struct {
         const Self = @This();
 
-        const Fields: u32 = switch (@typeInfo(T)) {
+        const Fields: []const Type.StructField = switch (@typeInfo(T)) {
             .Struct => |S| S.fields,
             else => @compileError("T needs to be a struct"),
         };
@@ -251,7 +251,6 @@ const DynStruct = struct {
         };
     }
 };
-
 
 
 pub fn main() anyerror!void {
