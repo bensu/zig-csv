@@ -138,7 +138,6 @@ pub const NextUserError = error {
 // 'error.WouldBlock' not a member of destination error set
 
 
-
 pub fn CsvParser(
     comptime T: type,
 ) type {
@@ -189,7 +188,7 @@ pub fn CsvParser(
                             } else if (comptime F.field_type == []const u8) {
                                 payload = val.field;
                             } else {
-                                @compileError("Unsupported type {}");
+                                @compileError("Unsupported type " ++ @typeName(F.field_type) ++ " for field " ++ F.name ++ " on struct " ++ @typeName(T));
                             }
 
                             // std.debug.print("Adding field\n", .{});
