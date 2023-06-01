@@ -262,7 +262,7 @@ fn isIntType(comptime T: type) bool {
 // []u8 to u32
 fn parseInt(comptime T: type, inputString: []const u8) ?T {
     if (comptime !isIntType(T)) {
-        @compileError("T needs to be an integer type like u32 or i64");
+        @compileError(@typeName(T) ++ " needs to be an integer type like u32 or i64");
     }
 
     const out = std.fmt.parseInt(T, inputString, 0) catch {
