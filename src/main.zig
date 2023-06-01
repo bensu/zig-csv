@@ -220,7 +220,7 @@ pub const NextUserError = error {
 // 'error.Unexpected' not a member of destination error set
 // 'error.WouldBlock' not a member of destination error set
 
-fn consume_row(csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader)) !void {
+fn consume_row(csv_tokenizer: *csv_mod.CsvTokenizer(fs.File.Reader)) !void {
      var maybe_val = csv_tokenizer.next() catch {
          return error.BadInput;
      };
@@ -271,9 +271,8 @@ pub fn CsvParser(
             var buffer = try allocator.alloc(u8, 4096);
             var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
 
-            // TODO: skip first row
             if (config.skip_first_row) {
-                try consume_row(csv_tokenizer);
+                try consume_row(&csv_tokenizer);
             }
 
             return Self{
