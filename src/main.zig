@@ -85,42 +85,11 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
 }
 
 
-
-const FieldDelimiter = ',';
-
 // const csv_config = csv_mod.CsvConfig{
 //     .col_sep = ',',
 //     .row_sep = '\n',
 //     .quote = '"',
 // };
-
-fn isAtomicTypeReadable(comptime T: type) bool {
-    comptime switch (T) {
-        []const u8 => return true,
-        else => return false,
-    };
-}
-
-fn isArrayType(comptime T: type) bool {
-    const type_info = @typeInfo(T);
-    if (type_info.tag == .ArrayType) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-const max_fields = 20;
-
-fn initFields(comptime s: Type.Struct) []type {
-    var field_types: [max_fields]type = undefined;
-    var number_of_fields = 0;
-    inline for (s.fields) |field, i| {
-        field_types[i] = field.field_type;
-        number_of_fields = number_of_fields + 1;
-    }
-    return field_types[0..number_of_fields];
-}
 
 // Writing a CSV library that knew how to read directly into Structs would be cool
 
@@ -147,7 +116,7 @@ pub fn CsvParser(
     return struct {
         const Self = @This();
 
-        const Fields = switch (@typeInfo(T)) {
+        const Fields: u32 = switch (@typeInfo(T)) {
             .Struct => |S| S.fields,
             else => @compileError("T needs to be a struct"),
         };
