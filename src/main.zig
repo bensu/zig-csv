@@ -138,6 +138,28 @@ pub const NextUserError = error {
 // 'error.WouldBlock' not a member of destination error set
 
 
+inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !?T {
+    switch (@typeInfo(T)) {
+        .Int => {
+            if (parseInt(T, input_val)) |p| {
+                return p;
+            } else {
+                return error.BadInput;
+            }
+        },
+        .Float => {
+            if (parseFloat(T, input_val)) |p| {
+                return p;
+            } else {
+                return error.BadInput;
+            }
+        },
+        else => {
+            @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+        } 
+    }
+}
+
 pub fn CsvParser(
     comptime T: type,
 ) type {
@@ -181,18 +203,30 @@ pub fn CsvParser(
                     switch (val) {
                         .field => {
                             var payload: F.field_type = undefined;
-                            if (comptime isIntType(F.field_type)) {
-                                if (parseInt(F.field_type, val.field)) |p| {
-                                    payload = p;
-                                } else {
-                                    return error.BadInput;
-                                }
-                            } else if (comptime F.field_type == []const u8) {
+                            if (comptime F.field_type == []const u8) {
                                 payload = val.field;
                             } else {
-                                @compileError("Unsupported type " ++ @typeName(F.field_type) ++ " for field " ++ F.name ++ " on struct " ++ @typeName(T));
+                                const field_info = @typeInfo(F.field_type);
+                                switch (field_info) {
+                                   .Optional => {
+                                        const nested_field_type: type = field_info.Optional.child;
+                                        if (val.field.len == 0) {
+                                            payload = null;
+                                        } else {
+                                            const p = parseAtomic(nested_field_type, F.name, val.field) catch {
+                                                return error.BadInput;
+                                            };
+                                            payload = p;
+                                        }
+                                    },
+                                    else => {
+                                        const p = parseAtomic(F.field_type, F.name, val.field) catch {
+                                            return error.BadInput;
+                                        };
+                                        payload = p;
+                                    }
+                                }
                             }
-
                             // std.debug.print("Adding field\n", .{});
                             @field(draft_t, F.name) = payload;
                             fields_added = fields_added + 1;
@@ -216,6 +250,7 @@ pub fn CsvParser(
             if (maybe_val) |val| {
                 switch (val) {
                     .field => {
+                        std.debug.print("Extra fields {s}\n", .{val.field});
                         return error.ExtraFields;
                     },
                     .row_end => {
@@ -259,13 +294,34 @@ fn isIntType(comptime T: type) bool {
     return comptime isUnsignedIntType(T) or isSignedIntType(T);
 }
 
+fn isFloatType(comptime T: type) bool {
+    comptime switch (T) {
+        f32 => return true,
+        f64 => return true,
+        else => return false,
+    };
+}
+
 // []u8 to u32
-fn parseInt(comptime T: type, inputString: []const u8) ?T {
+fn parseInt(comptime T: type, input_string: []const u8) ?T {
     if (comptime !isIntType(T)) {
         @compileError(@typeName(T) ++ " needs to be an integer type like u32 or i64");
     }
 
-    const out = std.fmt.parseInt(T, inputString, 0) catch {
+    const out = std.fmt.parseInt(T, input_string, 0) catch {
+        return null;
+    };
+    return out;
+}
+
+fn parseFloat(comptime T: type, input_string: []const u8) ?T {
+    if (comptime !isFloatType(T)) {
+        @compileError(@typeName(T) ++ " needs to be a float like f32 or f64");
+    }
+
+    const out = std.fmt.parseFloat(T, input_string) catch |err| {
+        std.debug.print("Error while parsing int {}\n", .{err});
+        std.debug.print("DATA: {s}\n", .{input_string});
         return null;
     };
     return out;
@@ -275,6 +331,37 @@ const DynStruct = struct {
     id: i64,
     age: []const u8,
 };
+
+const Indexes = struct {
+    series: []const u8,
+    period: []const u8,
+    value: ?f32,
+    status: []const u8,
+    units: []const u8,
+    magnitude: []const u8,
+    subject: []const u8,
+    group: []const u8,
+    title_1: []const u8,
+    title_2: []const u8,
+    title_3: []const u8,
+    title_4: []const u8,
+    title_5: []const u8,
+};
+
+fn benchmark() anyerror!void {
+    const file_path = "data/trade-indexes.csv";
+    const allocator = std.heap.page_allocator;
+        var file = try fs.cwd().openFile(file_path, .{});
+        defer file.close();
+        const reader = file.reader();
+
+        var csv_parser_two = try CsvParser(Indexes).init(allocator, reader);
+        var rows: usize = 0;
+        while (try csv_parser_two.next()) |_| {
+            rows = rows + 1;
+        }
+        std.debug.print("Number of rows: {}\n", .{rows});
+}
 
 
 pub fn main() anyerror!void {
@@ -304,7 +391,7 @@ pub fn main() anyerror!void {
         std.debug.print("No field {?}\n", .{no_row});
     }
 
-    if (true) {
+    if (false) {
         var file = try fs.cwd().openFile(file_path, .{});
         defer file.close();
         const reader = file.reader();
@@ -319,6 +406,9 @@ pub fn main() anyerror!void {
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
 
+    }
+    if (true) {
+        try benchmark();
     }
 }
 
