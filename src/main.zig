@@ -1,6 +1,8 @@
 const std = @import("std");
 const fs = std.fs;
 const csv_mod = @import("csv.zig");
+const sm = @import("state.zig");
+
 const Type = std.builtin.Type;
 
 // ============================================================================
@@ -62,7 +64,7 @@ fn parseFloat(comptime T: type, input_string: []const u8) ?T {
     return out;
 }
 
-inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !?T {
+inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !T {
     switch (@typeInfo(T)) {
         .Int => {
             if (parseInt(T, input_val)) |p| {
@@ -80,10 +82,9 @@ inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_v
         },
         else => {
             @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
-        } 
+        },
     }
 }
-
 
 // Want to do something that feels like a JIT
 
@@ -166,7 +167,6 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
     return outArray;
 }
 
-
 // const csv_config = csv_mod.CsvConfig{
 //     .col_sep = ',',
 //     .row_sep = '\n',
@@ -192,12 +192,12 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
 // csv_reader.nextRow() -> ?T
 // if ?T is null, we are done
 
-pub const InitUserError = error {
+pub const InitUserError = error{
     OutOfMemory,
     BadInput,
 };
 
-pub const NextUserError = error {
+pub const NextUserError = error{
     BadInput,
     MissingFields,
     ExtraFields,
@@ -220,27 +220,47 @@ pub const NextUserError = error {
 // 'error.Unexpected' not a member of destination error set
 // 'error.WouldBlock' not a member of destination error set
 
-fn consume_row(csv_tokenizer: *csv_mod.CsvTokenizer(fs.File.Reader)) !void {
-     var maybe_val = csv_tokenizer.next() catch {
-         return error.BadInput;
-     };
-     var continue_loop = true;
-     while (continue_loop) {
-         if (maybe_val) |val| {
-             switch (val) {
-                 .field => {
-                     maybe_val = csv_tokenizer.next() catch {
-                         return error.BadInput;
-                     };
-                     continue;
+// fn consume_row(csv_tokenizer: *csv_mod.CsvTokenizer(fs.File.Reader)) !void {
+//     var maybe_val = csv_tokenizer.next() catch {
+//         return error.BadInput;
+//     };
+//     var continue_loop = true;
+//     while (continue_loop) {
+//         if (maybe_val) |val| {
+//             switch (val) {
+//                 .field => {
+//                     maybe_val = csv_tokenizer.next() catch {
+//                         return error.BadInput;
+//                     };
+//                     continue;
+//                 },
+//                 .row_end => {
+//                     continue_loop = false;
+//                     break;
+//                 },
+//             }
+//         }
+//     }
+// }
 
-                 },
-                 .row_end => {
-                     continue_loop = false;
-                     break;
-                 },
-             }
-         }
+fn consume_row(csv_tokenizer: *sm.CsvTokenizer) !void {
+    var token = csv_tokenizer.next() catch {
+        return error.BadInput;
+    };
+    var continue_loop = true;
+    while (continue_loop) {
+        switch (token) {
+            .field => {
+                token = csv_tokenizer.next() catch {
+                    return error.BadInput;
+                };
+                continue;
+            },
+            .row_end, .eof => {
+                continue_loop = false;
+                break;
+            },
+        }
     }
 }
 
@@ -263,24 +283,21 @@ pub fn CsvParser(
 
         allocator: std.mem.Allocator,
         reader: fs.File.Reader, // TODO: allow other types of readers
-        csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
+        // csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
+        sm: sm.CsvTokenizer,
         config: CsvConfig,
 
         fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
             var buffer = try allocator.alloc(u8, 4096);
-            var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
+            // var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
+            var state_machine = sm.CsvTokenizer{ .reader = reader, .buffer = buffer };
 
             if (config.skip_first_row) {
-                try consume_row(&csv_tokenizer);
+                try consume_row(&state_machine);
             }
 
-            return Self{
-                .allocator = allocator,
-                .reader = reader,
-                .csv_tokenizer = csv_tokenizer,
-                .config = config,
-            };
+            return Self{ .allocator = allocator, .reader = reader, .config = config, .sm = state_machine };
         }
 
         // Try to read a row and return a parsed T out of it if possible
@@ -290,68 +307,60 @@ pub fn CsvParser(
             var draft_t: T = undefined; // T.init();
             var fields_added: u32 = 0;
             inline for (Fields) |F| {
-                const maybe_val = self.csv_tokenizer.next() catch {
+                const token = self.sm.next() catch {
                     return error.BadInput;
                 };
-                // std.debug.print("Getting next token {?}\n", .{maybe_val});
-                if (maybe_val) |val| {
-                    switch (val) {
-                        .field => {
-                            var payload: F.field_type = undefined;
-                            if (comptime F.field_type == []const u8) {
-                                payload = val.field;
-                            } else {
-                                const field_info = @typeInfo(F.field_type);
-                                switch (field_info) {
-                                   .Optional => {
-                                        const nested_field_type: type = field_info.Optional.child;
-                                        if (val.field.len == 0) {
-                                            payload = null;
-                                        } else {
-                                            const p = parseAtomic(nested_field_type, F.name, val.field) catch {
-                                                return error.BadInput;
-                                            };
-                                            payload = p;
-                                        }
-                                    },
-                                    else => {
-                                        const p = parseAtomic(F.field_type, F.name, val.field) catch {
+                // std.debug.print("Getting next token {s}\n", .{token.field});
+                switch (token) {
+                    .field => {
+                        var payload: F.field_type = undefined;
+                        if (comptime F.field_type == []const u8) {
+                            payload = token.field;
+                        } else {
+                            const field_info = @typeInfo(F.field_type);
+                            switch (field_info) {
+                                .Optional => {
+                                    const nested_field_type: type = field_info.Optional.child;
+                                    if (token.field.len == 0) {
+                                        payload = null;
+                                    } else {
+                                        const p = parseAtomic(nested_field_type, F.name, token.field) catch {
                                             return error.BadInput;
                                         };
                                         payload = p;
                                     }
-                                }
+                                },
+                                else => {
+                                    const p = parseAtomic(F.field_type, F.name, token.field) catch {
+                                        return error.BadInput;
+                                    };
+                                    payload = p;
+                                },
                             }
-                            // std.debug.print("Adding field\n", .{});
-                            @field(draft_t, F.name) = payload;
-                            fields_added = fields_added + 1;
-                        },
-                        .row_end => {
-                            // std.debug.print("Expected {} fields, got {}\n", .{ number_of_fields, fields_added });
-                            return error.MissingFields;
-                        },
-                    }
-                } else {
-                    // if we didn't get anything else here we are missing some
-                    // fields in the last row, and we are discarding that
-                    break;
+                        }
+                        // std.debug.print("Adding field\n", .{});
+                        @field(draft_t, F.name) = payload;
+                        fields_added = fields_added + 1;
+                    },
+                    .row_end => {
+                        // std.debug.print("Expected {} fields, got {}\n", .{ number_of_fields, fields_added });
+                        return error.MissingFields;
+                    },
+                    .eof => return null,
                 }
             }
 
             // consume the row_end
-            const maybe_val = self.csv_tokenizer.next() catch {
+            const token = self.sm.next() catch {
                 return error.BadInput;
             };
-            if (maybe_val) |val| {
-                switch (val) {
-                    .field => {
-                        std.debug.print("Extra fields {s}\n", .{val.field});
-                        return error.ExtraFields;
-                    },
-                    .row_end => {
-                        // Great
-                    },
-                }
+            switch (token) {
+                .field => {
+                    std.debug.print("Extra fields {s}\n", .{token.field});
+                    return error.ExtraFields;
+                },
+                .row_end => {},
+                .eof => {},
             }
 
             // were all the fields added?
@@ -389,18 +398,17 @@ const Indexes = struct {
 fn benchmark() anyerror!void {
     const file_path = "data/trade-indexes.csv";
     const allocator = std.heap.page_allocator;
-        var file = try fs.cwd().openFile(file_path, .{});
-        defer file.close();
-        const reader = file.reader();
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+    const reader = file.reader();
 
-        var csv_parser_two = try CsvParser(Indexes).init(allocator, reader, .{});
-        var rows: usize = 0;
-        while (try csv_parser_two.next()) |_| {
-            rows = rows + 1;
-        }
-        std.debug.print("Number of rows: {}\n", .{rows});
+    var csv_parser_two = try CsvParser(Indexes).init(allocator, reader, .{});
+    var rows: usize = 0;
+    while (try csv_parser_two.next()) |_| {
+        rows = rows + 1;
+    }
+    std.debug.print("Number of rows: {}\n", .{rows});
 }
-
 
 pub fn main() anyerror!void {
     const file_path: []const u8 = "data.csv";
@@ -443,7 +451,6 @@ pub fn main() anyerror!void {
         }
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
-
     }
     if (true) {
         try benchmark();
