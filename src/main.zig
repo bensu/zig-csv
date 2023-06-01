@@ -220,6 +220,29 @@ pub const NextUserError = error {
 // 'error.Unexpected' not a member of destination error set
 // 'error.WouldBlock' not a member of destination error set
 
+fn consume_row(csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader)) !void {
+     var maybe_val = csv_tokenizer.next() catch {
+         return error.BadInput;
+     };
+     var continue_loop = true;
+     while (continue_loop) {
+         if (maybe_val) |val| {
+             switch (val) {
+                 .field => {
+                     maybe_val = csv_tokenizer.next() catch {
+                         return error.BadInput;
+                     };
+                     continue;
+
+                 },
+                 .row_end => {
+                     continue_loop = false;
+                     break;
+                 },
+             }
+         }
+    }
+}
 
 const CsvConfig = struct {
     skip_first_row: bool = true,
@@ -250,27 +273,7 @@ pub fn CsvParser(
 
             // TODO: skip first row
             if (config.skip_first_row) {
-                var maybe_val = csv_tokenizer.next() catch {
-                    return error.BadInput;
-                };
-                var continue_loop = true;
-                while (continue_loop) {
-                    if (maybe_val) |val| {
-                        switch (val) {
-                            .field => {
-                                maybe_val = csv_tokenizer.next() catch {
-                                    return error.BadInput;
-                                };
-                                continue;
-
-                            },
-                            .row_end => {
-                                continue_loop = false;
-                                break;
-                            },
-                        }
-                    }
-               }
+                try consume_row(csv_tokenizer);
             }
 
             return Self{
