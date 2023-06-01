@@ -110,6 +110,35 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
 // csv_reader.nextRow() -> ?T
 // if ?T is null, we are done
 
+pub const InitUserError = error {
+    OutOfMemory,
+};
+
+pub const NextUserError = error {
+    BadInput,
+    MissingFields,
+    ExtraFields,
+};
+
+// Errors from csv.zig:
+
+// 'error.MisplacedQuote' not a member of destination error set
+// 'error.NoSeparatorAfterField' not a member of destination error set
+// 'error.ShortBuffer' not a member of destination error set
+// 'error.AccessDenied' not a member of destination error set
+// 'error.BrokenPipe' not a member of destination error set
+// 'error.ConnectionResetByPeer' not a member of destination error set
+// 'error.ConnectionTimedOut' not a member of destination error set
+// 'error.InputOutput' not a member of destination error set
+// 'error.IsDir' not a member of destination error set
+// 'error.NotOpenForReading' not a member of destination error set
+// 'error.OperationAborted' not a member of destination error set
+// 'error.SystemResources' not a member of destination error set
+// 'error.Unexpected' not a member of destination error set
+// 'error.WouldBlock' not a member of destination error set
+
+
+
 pub fn CsvParser(
     comptime T: type,
 ) type {
@@ -127,7 +156,7 @@ pub fn CsvParser(
         reader: fs.File.Reader, // TODO: allow other types of readers
         csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
 
-        fn init(allocator: std.mem.Allocator, reader: fs.File.Reader) !Self {
+        fn init(allocator: std.mem.Allocator, reader: fs.File.Reader) InitUserError!Self {
             // TODO: How should this buffer work?
             var buffer = try allocator.alloc(u8, 4096);
             var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
@@ -139,11 +168,13 @@ pub fn CsvParser(
         }
 
         // Try to read a row and return a parsed T out of it if possible
-        pub fn next(self: *Self) !?T {
+        pub fn next(self: *Self) NextUserError!?T {
             var draft_t: T = T.init();
             var fields_added: u32 = 0;
             inline for (Fields) |F| {
-                const maybe_val = try self.csv_tokenizer.next();
+                const maybe_val = self.csv_tokenizer.next() catch {
+                    return error.BadInput;
+                };
                 // std.debug.print("Getting next token {?}\n", .{maybe_val});
                 if (maybe_val) |val| {
                     switch (val) {
@@ -153,7 +184,7 @@ pub fn CsvParser(
                                 if (parseInt(F.field_type, val.field)) |p| {
                                     payload = p;
                                 } else {
-                                    // ERROR
+                                    return error.BadInput;
                                 }
                             } else if (comptime F.field_type == []const u8) {
                                 payload = val.field;
@@ -167,9 +198,7 @@ pub fn CsvParser(
                         },
                         .row_end => {
                             // std.debug.print("Expected {} fields, got {}\n", .{ number_of_fields, fields_added });
-                            // ERROR
-                            // we are missing some fields
-                            break;
+                            return error.MissingFields;
                         },
                     }
                 } else {
@@ -180,12 +209,13 @@ pub fn CsvParser(
             }
 
             // consume the row_end
-            const maybe_val = try self.csv_tokenizer.next();
+            const maybe_val = self.csv_tokenizer.next() catch {
+                return error.BadInput;
+            };
             if (maybe_val) |val| {
                 switch (val) {
                     .field => {
-                        // TODO: ERROR
-                        // we have more fields than we expected
+                        return error.ExtraFields;
                     },
                     .row_end => {
                         // Great
