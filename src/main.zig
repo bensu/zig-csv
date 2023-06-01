@@ -11,54 +11,6 @@ const Type = std.builtin.Type;
 
 // I can start by doing that for a known schema and then seeing how to read the schema
 
-const FieldDelimiter = ',';
-
-const DynStruct = struct {
-    id: []const u8,
-    age: []const u8,
-
-    pub fn init() DynStruct {
-        return DynStruct{
-            .id = undefined,
-            .age = undefined,
-        };
-    }
-};
-
-// const csv_config = csv_mod.CsvConfig{
-//     .col_sep = ',',
-//     .row_sep = '\n',
-//     .quote = '"',
-// };
-
-fn isAtomicTypeReadable(comptime T: type) bool {
-    comptime switch (T) {
-        []const u8 => return true,
-        else => return false,
-    };
-}
-
-fn isArrayType(comptime T: type) bool {
-    const type_info = @typeInfo(T);
-    if (type_info.tag == .ArrayType) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-const max_fields = 20;
-
-fn initFields(comptime s: Type.Struct) []type {
-    var field_types: [max_fields]type = undefined;
-    var number_of_fields = 0;
-    inline for (s.fields) |field, i| {
-        field_types[i] = field.field_type;
-        number_of_fields = number_of_fields + 1;
-    }
-    return field_types[0..number_of_fields];
-}
-
 fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File.Reader) !std.ArrayList(T) {
     // TODO: how to pick the right size for the buffer?
     var buffer = try allocator.alloc(u8, 4096);
@@ -132,6 +84,44 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
     return outArray;
 }
 
+
+
+const FieldDelimiter = ',';
+
+// const csv_config = csv_mod.CsvConfig{
+//     .col_sep = ',',
+//     .row_sep = '\n',
+//     .quote = '"',
+// };
+
+fn isAtomicTypeReadable(comptime T: type) bool {
+    comptime switch (T) {
+        []const u8 => return true,
+        else => return false,
+    };
+}
+
+fn isArrayType(comptime T: type) bool {
+    const type_info = @typeInfo(T);
+    if (type_info.tag == .ArrayType) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+const max_fields = 20;
+
+fn initFields(comptime s: Type.Struct) []type {
+    var field_types: [max_fields]type = undefined;
+    var number_of_fields = 0;
+    inline for (s.fields) |field, i| {
+        field_types[i] = field.field_type;
+        number_of_fields = number_of_fields + 1;
+    }
+    return field_types[0..number_of_fields];
+}
+
 // Writing a CSV library that knew how to read directly into Structs would be cool
 
 // something like
@@ -189,8 +179,21 @@ pub fn CsvParser(
                 if (maybe_val) |val| {
                     switch (val) {
                         .field => {
+                            var payload: F.field_type = undefined;
+                            if (comptime isIntType(F.field_type)) {
+                                if (parseInt(F.field_type, val.field)) |p| {
+                                    payload = p;
+                                } else {
+                                    // ERROR
+                                }
+                            } else if (comptime F.field_type == []const u8) {
+                                payload = val.field;
+                            } else {
+                                @compileError("Unsupported type {}");
+                            }
+
                             // std.debug.print("Adding field\n", .{});
-                            @field(draft_t, F.name) = val.field;
+                            @field(draft_t, F.name) = payload;
                             fields_added = fields_added + 1;
                         },
                         .row_end => {
@@ -232,6 +235,56 @@ pub fn CsvParser(
     };
 }
 
+fn isUnsignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        u8 => return true,
+        u16 => return true,
+        u32 => return true,
+        u64 => return true,
+        else => return false,
+    };
+}
+
+fn isSignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        i8 => return true,
+        i16 => return true,
+        i32 => return true,
+        i64 => return true,
+        else => return false,
+    };
+}
+
+fn isIntType(comptime T: type) bool {
+    return comptime isUnsignedIntType(T) or isSignedIntType(T);
+}
+
+// []u8 to u32
+fn parseInt(comptime T: type, inputString: []const u8) ?T {
+    if (comptime !isIntType(T)) {
+        @compileError("T needs to be an integer type like u32 or i64");
+    }
+
+    const out = std.fmt.parseInt(T, inputString, 0) catch {
+        return null;
+    };
+    return out;
+}
+
+const DynStruct = struct {
+    id: i64,
+    age: []const u8,
+
+    pub fn init() DynStruct {
+        return DynStruct{
+            .id = undefined,
+            .age = undefined,
+        };
+    }
+};
+
+
+
 pub fn main() anyerror!void {
     const file_path: []const u8 = "data.csv";
     const allocator = std.heap.page_allocator;
@@ -245,25 +298,34 @@ pub fn main() anyerror!void {
     // }
 
     // New
-    var second_file = try fs.cwd().openFile(file_path, .{});
-    defer second_file.close();
-    const second_reader = second_file.reader();
+    if (false) {
+        var second_file = try fs.cwd().openFile(file_path, .{});
+        defer second_file.close();
+        const second_reader = second_file.reader();
 
-    var csv_parser = try CsvParser(DynStruct).init(allocator, second_reader);
-    const first_row = try csv_parser.next();
-    std.debug.print("Parsed {?}\n", .{first_row});
-    const second_row = try csv_parser.next();
-    std.debug.print("Parsed {?}\n", .{second_row});
-    const no_row = try csv_parser.next();
-    std.debug.print("No field {?}", .{no_row});
+        var csv_parser = try CsvParser(DynStruct).init(allocator, second_reader);
+        const first_row = try csv_parser.next();
+        std.debug.print("Parsed {?}\n", .{first_row});
+        const second_row = try csv_parser.next();
+        std.debug.print("Parsed {?}\n", .{second_row});
+        const no_row = try csv_parser.next();
+        std.debug.print("No field {?}\n", .{no_row});
+    }
 
-    var third_file = try fs.cwd().openFile(file_path, .{});
-    defer third_file.close();
-    const third_reader = third_file.reader();
+    if (true) {
+        var file = try fs.cwd().openFile(file_path, .{});
+        defer file.close();
+        const reader = file.reader();
 
-    var csv_parser_two = try CsvParser(DynStruct).init(allocator, third_reader);
-    while (try csv_parser_two.next()) |row| {
-        std.debug.print("Parsed {}\n", .{row});
+        var csv_parser_two = try CsvParser(DynStruct).init(allocator, reader);
+        var rows: usize = 0;
+        var id_sum: i64 = 0;
+        while (try csv_parser_two.next()) |row| {
+            id_sum = id_sum + row.id;
+            rows = rows + 1;
+        }
+        std.debug.print("Number of rows: {}\n", .{rows});
+        std.debug.print("Sum of id: {}\n", .{id_sum});
     }
 }
 
