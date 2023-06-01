@@ -3,6 +3,88 @@ const fs = std.fs;
 const csv_mod = @import("csv.zig");
 const Type = std.builtin.Type;
 
+// ============================================================================
+// Utils
+
+fn isUnsignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        u8 => return true,
+        u16 => return true,
+        u32 => return true,
+        u64 => return true,
+        else => return false,
+    };
+}
+
+fn isSignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        i8 => return true,
+        i16 => return true,
+        i32 => return true,
+        i64 => return true,
+        else => return false,
+    };
+}
+
+fn isIntType(comptime T: type) bool {
+    return comptime isUnsignedIntType(T) or isSignedIntType(T);
+}
+
+fn isFloatType(comptime T: type) bool {
+    comptime switch (T) {
+        f32 => return true,
+        f64 => return true,
+        else => return false,
+    };
+}
+
+fn parseInt(comptime T: type, input_string: []const u8) ?T {
+    if (comptime !isIntType(T)) {
+        @compileError(@typeName(T) ++ " needs to be an integer type like u32 or i64");
+    }
+
+    const out = std.fmt.parseInt(T, input_string, 0) catch {
+        return null;
+    };
+    return out;
+}
+
+fn parseFloat(comptime T: type, input_string: []const u8) ?T {
+    if (comptime !isFloatType(T)) {
+        @compileError(@typeName(T) ++ " needs to be a float like f32 or f64");
+    }
+
+    const out = std.fmt.parseFloat(T, input_string) catch |err| {
+        std.debug.print("Error while parsing int {}\n", .{err});
+        std.debug.print("DATA: {s}\n", .{input_string});
+        return null;
+    };
+    return out;
+}
+
+inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !?T {
+    switch (@typeInfo(T)) {
+        .Int => {
+            if (parseInt(T, input_val)) |p| {
+                return p;
+            } else {
+                return error.BadInput;
+            }
+        },
+        .Float => {
+            if (parseFloat(T, input_val)) |p| {
+                return p;
+            } else {
+                return error.BadInput;
+            }
+        },
+        else => {
+            @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+        } 
+    }
+}
+
+
 // Want to do something that feels like a JIT
 
 // 1. Read a schema from a file
@@ -112,6 +194,7 @@ fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File
 
 pub const InitUserError = error {
     OutOfMemory,
+    BadInput,
 };
 
 pub const NextUserError = error {
@@ -138,27 +221,9 @@ pub const NextUserError = error {
 // 'error.WouldBlock' not a member of destination error set
 
 
-inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !?T {
-    switch (@typeInfo(T)) {
-        .Int => {
-            if (parseInt(T, input_val)) |p| {
-                return p;
-            } else {
-                return error.BadInput;
-            }
-        },
-        .Float => {
-            if (parseFloat(T, input_val)) |p| {
-                return p;
-            } else {
-                return error.BadInput;
-            }
-        },
-        else => {
-            @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
-        } 
-    }
-}
+const CsvConfig = struct {
+    skip_first_row: bool = true,
+};
 
 pub fn CsvParser(
     comptime T: type,
@@ -176,15 +241,43 @@ pub fn CsvParser(
         allocator: std.mem.Allocator,
         reader: fs.File.Reader, // TODO: allow other types of readers
         csv_tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
+        config: CsvConfig,
 
-        fn init(allocator: std.mem.Allocator, reader: fs.File.Reader) InitUserError!Self {
+        fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
             var buffer = try allocator.alloc(u8, 4096);
             var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
+
+            // TODO: skip first row
+            if (config.skip_first_row) {
+                var maybe_val = csv_tokenizer.next() catch {
+                    return error.BadInput;
+                };
+                var continue_loop = true;
+                while (continue_loop) {
+                    if (maybe_val) |val| {
+                        switch (val) {
+                            .field => {
+                                maybe_val = csv_tokenizer.next() catch {
+                                    return error.BadInput;
+                                };
+                                continue;
+
+                            },
+                            .row_end => {
+                                continue_loop = false;
+                                break;
+                            },
+                        }
+                    }
+               }
+            }
+
             return Self{
                 .allocator = allocator,
                 .reader = reader,
                 .csv_tokenizer = csv_tokenizer,
+                .config = config,
             };
         }
 
@@ -270,63 +363,6 @@ pub fn CsvParser(
     };
 }
 
-fn isUnsignedIntType(comptime T: type) bool {
-    comptime switch (T) {
-        u8 => return true,
-        u16 => return true,
-        u32 => return true,
-        u64 => return true,
-        else => return false,
-    };
-}
-
-fn isSignedIntType(comptime T: type) bool {
-    comptime switch (T) {
-        i8 => return true,
-        i16 => return true,
-        i32 => return true,
-        i64 => return true,
-        else => return false,
-    };
-}
-
-fn isIntType(comptime T: type) bool {
-    return comptime isUnsignedIntType(T) or isSignedIntType(T);
-}
-
-fn isFloatType(comptime T: type) bool {
-    comptime switch (T) {
-        f32 => return true,
-        f64 => return true,
-        else => return false,
-    };
-}
-
-// []u8 to u32
-fn parseInt(comptime T: type, input_string: []const u8) ?T {
-    if (comptime !isIntType(T)) {
-        @compileError(@typeName(T) ++ " needs to be an integer type like u32 or i64");
-    }
-
-    const out = std.fmt.parseInt(T, input_string, 0) catch {
-        return null;
-    };
-    return out;
-}
-
-fn parseFloat(comptime T: type, input_string: []const u8) ?T {
-    if (comptime !isFloatType(T)) {
-        @compileError(@typeName(T) ++ " needs to be a float like f32 or f64");
-    }
-
-    const out = std.fmt.parseFloat(T, input_string) catch |err| {
-        std.debug.print("Error while parsing int {}\n", .{err});
-        std.debug.print("DATA: {s}\n", .{input_string});
-        return null;
-    };
-    return out;
-}
-
 const DynStruct = struct {
     id: i64,
     age: []const u8,
@@ -355,7 +391,7 @@ fn benchmark() anyerror!void {
         defer file.close();
         const reader = file.reader();
 
-        var csv_parser_two = try CsvParser(Indexes).init(allocator, reader);
+        var csv_parser_two = try CsvParser(Indexes).init(allocator, reader, .{});
         var rows: usize = 0;
         while (try csv_parser_two.next()) |_| {
             rows = rows + 1;
@@ -382,7 +418,7 @@ pub fn main() anyerror!void {
         defer second_file.close();
         const second_reader = second_file.reader();
 
-        var csv_parser = try CsvParser(DynStruct).init(allocator, second_reader);
+        var csv_parser = try CsvParser(DynStruct).init(allocator, second_reader, .{});
         const first_row = try csv_parser.next();
         std.debug.print("Parsed {?}\n", .{first_row});
         const second_row = try csv_parser.next();
@@ -396,7 +432,7 @@ pub fn main() anyerror!void {
         defer file.close();
         const reader = file.reader();
 
-        var csv_parser_two = try CsvParser(DynStruct).init(allocator, reader);
+        var csv_parser_two = try CsvParser(DynStruct).init(allocator, reader, .{});
         var rows: usize = 0;
         var id_sum: i64 = 0;
         while (try csv_parser_two.next()) |row| {
