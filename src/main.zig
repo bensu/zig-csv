@@ -94,79 +94,6 @@ inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_v
 
 // I can start by doing that for a known schema and then seeing how to read the schema
 
-fn readDynStruct(comptime T: type, allocator: std.mem.Allocator, reader: fs.File.Reader) !std.ArrayList(T) {
-    // TODO: how to pick the right size for the buffer?
-    var buffer = try allocator.alloc(u8, 4096);
-    var csv = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
-
-    // TODO: how long should the array be?
-    var outArray = std.ArrayList(T).init(allocator);
-
-    // compile time loop
-    switch (@typeInfo(T)) {
-        .Struct => |S| {
-            const number_of_fields = S.fields.len;
-            var continue_loop = true;
-            while (continue_loop) {
-                var draft_t: T = T.init();
-
-                var fields_added: u32 = 0;
-                inline for (S.fields) |F| {
-                    const maybe_val = try csv.next();
-                    std.debug.print("Getting next token {?}\n", .{maybe_val});
-                    if (maybe_val) |val| {
-                        switch (val) {
-                            .field => {
-                                std.debug.print("Adding field\n", .{});
-                                @field(draft_t, F.name) = val.field;
-                                fields_added = fields_added + 1;
-                            },
-                            .row_end => {
-                                std.debug.print("Expected {} fields, got {}\n", .{ number_of_fields, fields_added });
-                                // ERROR
-                            },
-                        }
-                    } else {
-                        // if we didn't get anything else here we are missing some
-                        // fields in the last row, and we are discarding that
-                        continue_loop = false;
-                        break;
-                    }
-                }
-
-                // were all the fields added?
-                if (fields_added != number_of_fields) {
-                    // ERROR
-                }
-
-                // We parsed a token per field, so we expect to be at the end of the row
-                const maybe_val = try csv.next();
-                if (maybe_val) |val| {
-                    switch (val) {
-                        .field => {
-                            // ERROR
-                        },
-                        .row_end => {
-                            std.debug.print("Adding to array\n", .{});
-                            fields_added = 0;
-                            try outArray.append(draft_t);
-                        },
-                    }
-                } else {
-                    // if we didn't get anything else here we are done
-                    // TODO: maybe break here is enough?
-                    continue_loop = false;
-                    break;
-                }
-                std.debug.print("{}\n", .{draft_t});
-            }
-        },
-        else => @compileError(@typeName(T) ++ " needs to be a struct"),
-    }
-
-    return outArray;
-}
-
 // const csv_config = csv_mod.CsvConfig{
 //     .col_sep = ',',
 //     .row_sep = '\n',
@@ -405,7 +332,7 @@ const Indexes = struct {
 };
 
 fn benchmark() anyerror!void {
-    const file_path = "data/trade-indexes copy.csv";
+    const file_path = "data/trade-indexes.csv";
     const allocator = std.heap.page_allocator;
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
