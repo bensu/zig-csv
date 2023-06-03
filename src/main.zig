@@ -289,9 +289,9 @@ pub fn CsvParser(
 
         fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
-            var buffer = try allocator.alloc(u8, 4096);
+            var field_buffer = try allocator.alloc(u8, 4096);
             // var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
-            var state_machine = sm.CsvTokenizer{ .reader = reader, .buffer = buffer };
+            var state_machine = sm.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
             if (config.skip_first_row) {
                 try consume_row(&state_machine);
@@ -386,10 +386,26 @@ const Indexes = struct {
     title_3: []const u8,
     title_4: []const u8,
     title_5: []const u8,
+
+    pub fn format(v: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+        try writer.print("series: \"{s}\" ", .{v.series});
+        try writer.print("period: \"{s}\" ", .{v.period});
+        try writer.print("value: {?} ", .{v.value});
+        try writer.print("status: \"{s}\" ", .{v.status});
+        try writer.print("units: \"{s}\" ", .{v.units});
+        try writer.print("magnitude: \"{s}\" ", .{v.magnitude});
+        try writer.print("subject: \"{s}\" ", .{v.subject});
+        try writer.print("group: \"{s}\" ", .{v.group});
+        try writer.print("title_1: \"{s}\" ", .{v.title_1});
+        try writer.print("title_2: \"{s}\" ", .{v.title_2});
+        try writer.print("title_3: \"{s}\" ", .{v.title_3});
+        try writer.print("title_4: \"{s}\" ", .{v.title_4});
+        return writer.print("title_5: \"{s}\" ", .{v.title_5});
+    }
 };
 
 fn benchmark() anyerror!void {
-    const file_path = "data/trade-indexes.csv";
+    const file_path = "data/trade-indexes copy.csv";
     const allocator = std.heap.page_allocator;
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
@@ -398,6 +414,8 @@ fn benchmark() anyerror!void {
     var csv_parser_two = try CsvParser(Indexes).init(allocator, reader, .{});
     var rows: usize = 0;
     while (try csv_parser_two.next()) |_| {
+        // std.debug.print("Row: {}\n", .{rows});
+        // std.debug.print("{}\n", .{row});
         rows = rows + 1;
     }
     std.debug.print("Number of rows: {}\n", .{rows});
@@ -477,6 +495,7 @@ pub fn main() anyerror!void {
         std.debug.print("Sum of id: {}\n", .{id_sum});
     }
     if (true) {
+        std.debug.print("Starting benchmark\n", .{});
         try benchmark();
     }
     if (false) {

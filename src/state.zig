@@ -48,10 +48,44 @@ const State = enum {
     eof,
 };
 
+const ReadingError = error{
+    EndOfStream,
+};
+
+const STREAM_INDEX_LEN: usize = 256;
+
 pub const CsvTokenizer = struct {
     reader: fs.File.Reader,
-    buffer: []u8,
+    field_buffer: []u8,
     state: State = .in_row,
+
+    // manages underlying file reader
+    stream_buffer: [STREAM_INDEX_LEN]u8 = undefined,
+    stream_index: usize = 0, // should always be within stream_index
+    stream_available: usize = 0, // how many bytes are available in the stream_buffer
+
+    // asks for a char from the stream_buffer, potentially reads another chunk
+    fn readChar(self: *CsvTokenizer) ReadingError!u8 {
+        // if we reached the end of the stream_buffer, read another chunk
+        if (self.stream_index == self.stream_available) {
+            const n = self.reader.read(&self.stream_buffer) catch {
+                return error.EndOfStream;
+            };
+            if (n == 0) {
+                return error.EndOfStream;
+            } else {
+                // restart the stream_index because we read again
+                self.stream_available = n;
+                self.stream_index = 1;
+                return self.stream_buffer[0];
+            }
+        } else {
+            // we are still within the stream_buffer, just return the next char
+            self.stream_index = (self.stream_index + 1);
+            // std.debug.print("stream_index: {}\n", .{self.stream_index});
+            return self.stream_buffer[self.stream_index - 1];
+        }
+    }
 
     pub fn next(self: *CsvTokenizer) !Token {
         if (self.state == .eof) {
@@ -68,21 +102,21 @@ pub const CsvTokenizer = struct {
 
         var index: usize = 0;
         while (true) {
-            if (index >= self.buffer.len) return error.StreamTooLong;
+            if (index >= self.field_buffer.len) return error.StreamTooLong;
 
-            const byte = self.reader.readByte() catch |err| switch (err) {
+            const byte = self.readChar() catch |err| switch (err) {
                 error.EndOfStream => {
                     if (index == 0) {
                         self.state = .eof;
                         return Token{ .eof = null };
                     } else {
                         self.state = .eof;
-                        return Token{ .field = self.buffer[0..index] };
+                        return Token{ .field = self.field_buffer[0..index] };
                     }
                 },
                 else => |e| return e,
             };
-            self.buffer[index] = byte;
+            self.field_buffer[index] = byte;
 
             // we found a quote
             if (byte == quote_delimiter) {
@@ -100,13 +134,13 @@ pub const CsvTokenizer = struct {
                 continue;
             } else {
                 if (byte == field_end_delimiter) {
-                    return Token{ .field = self.buffer[0..index] };
+                    return Token{ .field = self.field_buffer[0..index] };
                 }
 
                 // Should row_end_delimiters belong in quotes
                 if (byte == row_end_delimiter) {
                     self.state = .row_end;
-                    return Token{ .field = self.buffer[0..index] };
+                    return Token{ .field = self.field_buffer[0..index] };
                 }
                 index += 1;
             }
