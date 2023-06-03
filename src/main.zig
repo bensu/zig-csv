@@ -406,7 +406,7 @@ pub fn main() anyerror!void {
         std.debug.print("No field {?}\n", .{no_row});
     }
 
-    if (true) {
+    if (false) {
         var file = try fs.cwd().openFile(file_path, .{});
         defer file.close();
         const reader = file.reader();
@@ -421,7 +421,7 @@ pub fn main() anyerror!void {
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
     }
-    if (false) {
+    if (true) {
         std.debug.print("Starting benchmark\n", .{});
         try benchmark();
     }
