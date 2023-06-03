@@ -302,51 +302,44 @@ pub fn CsvParser(
 
         // Try to read a row and return a parsed T out of it if possible
         pub fn next(self: *Self) NextUserError!?T {
-            // check that T has an init() function
-
-            var draft_t: T = undefined; // T.init();
+            var draft_t: T = undefined;
             var fields_added: u32 = 0;
-            inline for (Fields) |F| {
+            inline for (Fields) |Field| {
                 const token = self.sm.next() catch {
                     return error.BadInput;
                 };
                 // std.debug.print("Getting next token {s}\n", .{token.field});
                 switch (token) {
+                    .row_end => return error.MissingFields,
+                    .eof => return null,
                     .field => {
-                        var payload: F.field_type = undefined;
-                        if (comptime F.field_type == []const u8) {
-                            payload = token.field;
+                        if (comptime Field.field_type == []const u8) {
+                            var new_buffer: [4096]u8 = undefined;
+                            std.mem.copy(u8, &new_buffer, token.field);
+                            @field(draft_t, Field.name) = new_buffer[0..token.field.len];
                         } else {
-                            const field_info = @typeInfo(F.field_type);
-                            switch (field_info) {
+                            const FieldInfo = @typeInfo(Field.field_type);
+                            switch (FieldInfo) {
                                 .Optional => {
-                                    const nested_field_type: type = field_info.Optional.child;
+                                    const NestedFieldType: type = FieldInfo.Optional.child;
                                     if (token.field.len == 0) {
-                                        payload = null;
+                                        @field(draft_t, Field.name) = null;
                                     } else {
-                                        const p = parseAtomic(nested_field_type, F.name, token.field) catch {
+                                        @field(draft_t, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
                                             return error.BadInput;
                                         };
-                                        payload = p;
                                     }
                                 },
                                 else => {
-                                    const p = parseAtomic(F.field_type, F.name, token.field) catch {
+                                    @field(draft_t, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
                                         return error.BadInput;
                                     };
-                                    payload = p;
                                 },
                             }
                         }
                         // std.debug.print("Adding field\n", .{});
-                        @field(draft_t, F.name) = payload;
                         fields_added = fields_added + 1;
                     },
-                    .row_end => {
-                        // std.debug.print("Expected {} fields, got {}\n", .{ number_of_fields, fields_added });
-                        return error.MissingFields;
-                    },
-                    .eof => return null,
                 }
             }
 
@@ -410,6 +403,37 @@ fn benchmark() anyerror!void {
     std.debug.print("Number of rows: {}\n", .{rows});
 }
 
+fn checkMemory() anyerror!void {
+    const file_path = "data/trade-indexes.csv";
+    const allocator = std.heap.page_allocator;
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+    const reader = file.reader();
+
+    var csv_parser = try CsvParser(Indexes).init(allocator, reader, .{});
+    const first_row = try csv_parser.next();
+    if (first_row) |row| {
+        std.debug.print("First: {s}\n", .{row.series});
+    }
+    const second_row = try csv_parser.next();
+    if (second_row) |row| {
+        std.debug.print("Second: {s}\n", .{row.series});
+    }
+    const third_row = try csv_parser.next();
+    if (third_row) |row| {
+        std.debug.print("Second: {s}\n", .{row.series});
+    }
+    if (first_row) |row| {
+        std.debug.print("First: {s}\n", .{row.series});
+    }
+    if (second_row) |row| {
+        std.debug.print("Second: {s}\n", .{row.series});
+    }
+    if (third_row) |row| {
+        std.debug.print("Second: {s}\n", .{row.series});
+    }
+}
+
 pub fn main() anyerror!void {
     const file_path: []const u8 = "data.csv";
     const allocator = std.heap.page_allocator;
@@ -454,6 +478,9 @@ pub fn main() anyerror!void {
     }
     if (true) {
         try benchmark();
+    }
+    if (false) {
+        try checkMemory();
     }
 }
 
