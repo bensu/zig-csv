@@ -3,17 +3,9 @@
 const std = @import("std");
 const fs = std.fs;
 
-const TokenTag = enum {
-    field,
-    row_end,
-    eof,
-};
+const TokenTag = enum { field, row_end, eof };
 
-const Token = union(TokenTag) {
-    field: []u8,
-    row_end: @TypeOf(null),
-    eof: @TypeOf(null),
-};
+const Token = union(TokenTag) { field: []u8, row_end, eof };
 
 // Reader helper
 
@@ -69,10 +61,10 @@ pub const CsvTokenizer = struct {
 
     pub fn next(self: *CsvTokenizer) !Token {
         switch (self.state) {
-            .eof => return Token{ .eof = null },
+            .eof => return Token.eof,
             .row_end => {
                 self.state = .in_row;
-                return Token{ .row_end = null };
+                return Token.row_end;
             },
             else => {},
         }
@@ -85,7 +77,7 @@ pub const CsvTokenizer = struct {
                 error.EndOfStream => {
                     if (index == 0) {
                         self.state = .eof;
-                        return Token{ .eof = null };
+                        return Token.eof;
                     } else {
                         self.state = .eof;
                         return Token{ .field = self.field_buffer[0..index] };
