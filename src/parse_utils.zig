@@ -56,7 +56,11 @@ fn parseFloat(comptime T: type, input_string: []const u8) ?T {
     return out;
 }
 
-pub inline fn parseAtomic(comptime T: type, comptime field_name: []const u8, input_val: []const u8) !T {
+pub inline fn parseAtomic(
+    comptime T: type,
+    comptime field_name: []const u8,
+    input_val: []const u8,
+) !T {
     switch (@typeInfo(T)) {
         .Int => {
             if (parseInt(T, input_val)) |p| {
