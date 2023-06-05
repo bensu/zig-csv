@@ -147,27 +147,6 @@ pub const NextUserError = error{
 // 'error.Unexpected' not a member of destination error set
 // 'error.WouldBlock' not a member of destination error set
 
-fn consume_row(csv_tokenizer: *sm.CsvTokenizer) !void {
-    var token = csv_tokenizer.next() catch {
-        return error.BadInput;
-    };
-    var continue_loop = true;
-    while (continue_loop) {
-        switch (token) {
-            .field => {
-                token = csv_tokenizer.next() catch {
-                    return error.BadInput;
-                };
-                continue;
-            },
-            .row_end, .eof => {
-                continue_loop = false;
-                break;
-            },
-        }
-    }
-}
-
 const CsvConfig = struct {
     skip_first_row: bool = true,
 };
@@ -197,11 +176,18 @@ pub fn CsvParser(
             // var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
             var state_machine = sm.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
+            var self = Self{
+                .allocator = allocator,
+                .reader = reader,
+                .config = config,
+                .sm = state_machine,
+            };
+
             if (config.skip_first_row) {
-                try consume_row(&state_machine);
+                try self.consume_row();
             }
 
-            return Self{ .allocator = allocator, .reader = reader, .config = config, .sm = state_machine };
+            return self;
         }
 
         // Try to read a row and return a parsed T out of it if possible
@@ -268,6 +254,27 @@ pub fn CsvParser(
                 return null;
             }
         }
+
+        fn consume_row(self: *Self) !void {
+            var token = self.sm.next() catch {
+                return error.BadInput;
+            };
+            var continue_loop = true;
+            while (continue_loop) {
+                switch (token) {
+                    .field => {
+                        token = self.sm.next() catch {
+                            return error.BadInput;
+                        };
+                        continue;
+                    },
+                    .row_end, .eof => {
+                        continue_loop = false;
+                        break;
+                    },
+                }
+            }
+        }
     };
 }
 
@@ -291,7 +298,12 @@ const Indexes = struct {
     title_4: []const u8,
     title_5: []const u8,
 
-    pub fn format(v: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) std.os.WriteError!void {
+    pub fn format(
+        v: @This(),
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) std.os.WriteError!void {
         try writer.print("series: \"{s}\" ", .{v.series});
         try writer.print("period: \"{s}\" ", .{v.period});
         try writer.print("value: {?} ", .{v.value});
