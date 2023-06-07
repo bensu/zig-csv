@@ -1,6 +1,7 @@
 const std = @import("std");
 const fs = std.fs;
 const Type = std.builtin.Type;
+const ascii = std.ascii;
 
 // Utils
 
@@ -57,12 +58,24 @@ pub fn CsvSerializer(
             };
         }
 
+        pub fn writeHeader(self: *Self) !void {
+            inline for (Fields) |Field| {
+                try self.writer.writeAll(Field.name);
+                try self.writer.writeByte(',');
+            }
+            try self.writer.writeByte('\n');
+        }
+
+        // TODO: bug here somewhere that adds an extra \n with a comma every line
         pub fn appendRow(self: *Self, data: T) !void {
             inline for (Fields) |Field| {
                 const FieldType = Field.field_type;
                 const field_val: FieldType = @field(data, Field.name);
+                // std.debug.print("field name: {s}\nfield val:{s}\n", .{ Field.name, field_val });
                 if (comptime FieldType == []const u8) {
-                    try self.writer.writeAll(field_val);
+                    if (field_val.len != 0) {
+                        try self.writer.writeAll(field_val);
+                    }
                 } else {
                     const FieldInfo = @typeInfo(FieldType);
                     switch (FieldInfo) {
@@ -77,9 +90,9 @@ pub fn CsvSerializer(
                         },
                     }
                 }
-                try self.writer.writeAll(",");
+                try self.writer.writeByte(',');
             }
-            try self.writer.writeAll("\n");
+            try self.writer.writeByte('\n');
         }
     };
 }
