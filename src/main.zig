@@ -4,6 +4,7 @@ const csv_mod = @import("csv.zig");
 const sm = @import("state.zig");
 
 const parse_utils = @import("parse_utils.zig");
+const serialize = @import("serialize.zig");
 
 const Type = std.builtin.Type;
 
@@ -91,7 +92,7 @@ pub fn CsvParser(
         sm: sm.CsvTokenizer,
         config: CsvConfig,
 
-        fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
+        pub fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
             var field_buffer = try allocator.alloc(u8, 4096);
             // var csv_tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
@@ -289,6 +290,24 @@ fn checkMemory() anyerror!void {
     }
 }
 
+fn testCsvSerializer() !void {
+    const csv_config = serialize.CsvConfig{ .skip_first_row = true };
+    var writer = std.io.getStdOut().writer();
+    var csv_serializer = serialize.CsvSerializer(Indexes).init(csv_config, writer);
+
+    const file_path = "data/trade-indexes.csv";
+    const allocator = std.heap.page_allocator;
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+    const reader = file.reader();
+
+    var csv_parser = try CsvParser(Indexes).init(allocator, reader, .{});
+
+    while (try csv_parser.next()) |row| {
+        try csv_serializer.appendRow(row);
+    }
+}
+
 pub fn main() anyerror!void {
     const file_path: []const u8 = "data.csv";
     const allocator = std.heap.page_allocator;
@@ -331,12 +350,15 @@ pub fn main() anyerror!void {
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
     }
-    if (true) {
+    if (false) {
         std.debug.print("Starting benchmark\n", .{});
         try benchmark();
     }
     if (false) {
         try checkMemory();
+    }
+    if (true) {
+        try testCsvSerializer();
     }
 }
 
