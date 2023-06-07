@@ -291,17 +291,18 @@ fn checkMemory() anyerror!void {
 }
 
 fn testCsvSerializer() !void {
-    const csv_config = serialize.CsvConfig{ .skip_first_row = true };
-    var writer = std.io.getStdOut().writer();
-    var csv_serializer = serialize.CsvSerializer(Indexes).init(csv_config, writer);
-
-    const file_path = "data/trade-indexes.csv";
+    const from_path = "data/trade-indexes.csv";
     const allocator = std.heap.page_allocator;
-    var file = try fs.cwd().openFile(file_path, .{});
-    defer file.close();
-    const reader = file.reader();
-
+    var from_file = try fs.cwd().openFile(from_path, .{});
+    defer from_file.close();
+    const reader = from_file.reader();
     var csv_parser = try CsvParser(Indexes).init(allocator, reader, .{});
+
+    const to_path = "data/trade-indexes-copy.csv";
+    var to_file = try fs.cwd().createFile(to_path, .{}); // (to_path, .{});
+    defer to_file.close();
+    const writer = to_file.writer();
+    var csv_serializer = serialize.CsvSerializer(Indexes).init(.{}, writer);
 
     while (try csv_parser.next()) |row| {
         try csv_serializer.appendRow(row);
