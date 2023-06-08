@@ -115,8 +115,6 @@ pub fn CsvParser(
         config: CsvConfig,
 
         pub fn init(field_buffer: []u8, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
-            // TODO: How should this buffer work?
-            // var field_buffer = try allocator.alloc(u8, 4096);
             var tokenizer = tokenize.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
             var self = Self{
@@ -223,6 +221,35 @@ pub fn CsvParser(
     };
 }
 
+fn testStructEql(comptime T: type, a: T, b: T) !void {
+    const Fields = @typeInfo(T).Struct.fields;
+    inline for (Fields) |Field| {
+        if (comptime Field.field_type == []const u8) {
+            try std.testing.expect(std.mem.eql(u8, a.name, b.name));
+        } else {
+            try std.testing.expectEqual(@field(a, Field.name), @field(b, Field.name));
+        }
+    }
+}
+
+// const builtin = @import("std").builtin;
+//
+// fn structEql(comptime T: type, a: T, b: T) bool {
+//     const Fields = @typeInfo(T).Struct.fields;
+//     inline for (Fields) |Field| {
+//         if (comptime Field.field_type == []const u8) {
+//             if (!std.mem.eql(u8, @field(a, Field.name), @field(b, Field.name))) {
+//                 return false;
+//             }
+//         } else {
+//             if (!builtin.eql(@field(a, Field.name), @field(b, Field.name))) {
+//                 return false;
+//             }
+//         }
+//     }
+//     return true;
+// }
+
 test "parse" {
     var allocator = std.testing.allocator;
     const file_path = "test/data/simple_parse.csv";
@@ -240,17 +267,6 @@ test "parse" {
         nilable: ?u64,
 
         const Self = @This();
-
-        pub fn eql(a: Self, b: Self) bool {
-            return a.id == b.id and std.mem.eql(u8, a.name, b.name) and a.unit == b.unit and a.nilable == b.nilable;
-        }
-
-        pub fn testEql(a: Self, b: Self) !void {
-            try std.testing.expectEqual(a.id, b.id);
-            try std.testing.expect(std.mem.eql(u8, a.name, b.name));
-            try std.testing.expectEqual(a.unit, b.unit);
-            try std.testing.expectEqual(a.nilable, b.nilable);
-        }
     };
 
     var parser = try CsvParser(SimpleParse).init(field_buffer, reader, .{});
@@ -263,7 +279,7 @@ test "parse" {
             .unit = 1.1,
             .nilable = 111,
         };
-        try expected_row.testEql(row);
+        try testStructEql(SimpleParse, expected_row, row);
     } else {
         std.debug.print("Error parsing first row\n", .{});
         try std.testing.expectEqual(false, true);
@@ -276,7 +292,7 @@ test "parse" {
             .unit = 22.2,
             .nilable = null,
         };
-        try expected_row.testEql(row);
+        try testStructEql(SimpleParse, expected_row, row);
     } else {
         std.debug.print("Error parsing second row\n", .{});
         try std.testing.expectEqual(false, true);
@@ -290,7 +306,7 @@ test "parse" {
             .unit = 33.33,
             .nilable = 3333,
         };
-        try expected_row.testEql(row);
+        try testStructEql(SimpleParse, expected_row, row);
     } else {
         std.debug.print("Error parsing third row\n", .{});
         try std.testing.expectEqual(false, true);
