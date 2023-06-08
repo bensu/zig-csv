@@ -1,6 +1,5 @@
 const std = @import("std");
 const fs = std.fs;
-const csv_mod = @import("csv.zig");
 
 const serialize = @import("serialize.zig");
 const parse = @import("parse.zig");

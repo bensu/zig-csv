@@ -1,206 +1,92 @@
 const std = @import("std");
 const fs = std.fs;
-
-const parse_utils = @import("parse_utils.zig");
-
 const Type = std.builtin.Type;
 
+const tokenize = @import("tokenize.zig");
+
 // ============================================================================
-// Tokenizer
+// Utils
 
-const TokenTag = enum { field, row_end, eof };
+fn isUnsignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        u8 => return true,
+        u16 => return true,
+        u32 => return true,
+        u64 => return true,
+        else => return false,
+    };
+}
 
-const Token = union(TokenTag) { field: []u8, row_end, eof };
+fn isSignedIntType(comptime T: type) bool {
+    comptime switch (T) {
+        i8 => return true,
+        i16 => return true,
+        i32 => return true,
+        i64 => return true,
+        else => return false,
+    };
+}
 
-const field_end_delimiter = ',';
-const row_end_delimiter = '\n';
-const quote_delimiter = '"';
+fn isIntType(comptime T: type) bool {
+    return comptime isUnsignedIntType(T) or isSignedIntType(T);
+}
 
-const State = enum {
-    // default state, reading a field
-    in_row,
-    // while reading row, we found the end. return the field and hold state
-    // to return the row_end token on the next call
-    row_end,
-    // eof terminal state. if eof, always returns Token.eof
-    eof,
-};
+fn isFloatType(comptime T: type) bool {
+    comptime switch (T) {
+        f32 => return true,
+        f64 => return true,
+        else => return false,
+    };
+}
 
-const ReadingError = error{
-    EndOfStream,
-};
+fn parseInt(comptime T: type, input_string: []const u8) ?T {
+    if (comptime !isIntType(T)) {
+        @compileError(@typeName(T) ++ " needs to be an integer type like u32 or i64");
+    }
 
-const STREAM_INDEX_LEN: usize = 256;
+    const out = std.fmt.parseInt(T, input_string, 0) catch {
+        return null;
+    };
+    return out;
+}
 
-pub const CsvTokenizer = struct {
-    reader: fs.File.Reader,
-    field_buffer: []u8,
-    state: State = .in_row,
+fn parseFloat(comptime T: type, input_string: []const u8) ?T {
+    if (comptime !isFloatType(T)) {
+        @compileError(@typeName(T) ++ " needs to be a float like f32 or f64");
+    }
 
-    // manages underlying file reader
-    stream_buffer: [STREAM_INDEX_LEN]u8 = undefined,
-    stream_index: usize = 0, // should always be within stream_index
-    stream_available: usize = 0, // how many bytes are available in the stream_buffer
+    const out = std.fmt.parseFloat(T, input_string) catch |err| {
+        std.debug.print("Error while parsing int {}\n", .{err});
+        std.debug.print("DATA: {s}\n", .{input_string});
+        return null;
+    };
+    return out;
+}
 
-    // asks for a char from the stream_buffer, potentially reads another chunk
-    fn readChar(self: *CsvTokenizer) ReadingError!u8 {
-        // if we reached the end of the stream_buffer, read another chunk
-        if (self.stream_index == self.stream_available) {
-            const n = self.reader.read(&self.stream_buffer) catch {
-                return error.EndOfStream;
-            };
-            if (n == 0) {
-                return error.EndOfStream;
+pub inline fn parseAtomic(
+    comptime T: type,
+    comptime field_name: []const u8,
+    input_val: []const u8,
+) !T {
+    switch (@typeInfo(T)) {
+        .Int => {
+            if (parseInt(T, input_val)) |p| {
+                return p;
             } else {
-                // restart the stream_index because we read again
-                self.stream_available = n;
-                // this equivalent to self.stream_index = 0;
-                // returning the first char (as the last line does) and then incrementing
-                self.stream_index = 1;
-                return self.stream_buffer[0];
+                return error.BadInput;
             }
-        } else {
-            // we are still within the stream_buffer, just return the next char
-            self.stream_index = (self.stream_index + 1);
-            return self.stream_buffer[self.stream_index - 1];
-        }
+        },
+        .Float => {
+            if (parseFloat(T, input_val)) |p| {
+                return p;
+            } else {
+                return error.BadInput;
+            }
+        },
+        else => {
+            @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
+        },
     }
-
-    pub fn next(self: *CsvTokenizer) !Token {
-        switch (self.state) {
-            .eof => return Token.eof,
-            .row_end => {
-                self.state = .in_row;
-                return Token.row_end;
-            },
-            .in_row => {
-                // try to read the entire field
-                var was_quote: bool = false;
-                var index: usize = 0;
-                var in_quote: bool = false;
-                while (true) {
-                    if (index >= self.field_buffer.len) return error.StreamTooLong;
-
-                    const byte = self.readChar() catch |err| switch (err) {
-                        error.EndOfStream => {
-                            if (index == 0) {
-                                self.state = .eof;
-                                return Token.eof;
-                            } else {
-                                self.state = .eof;
-                                if (was_quote) {
-                                    return Token{ .field = self.field_buffer[1..(index - 1)] };
-                                } else {
-                                    return Token{ .field = self.field_buffer[0..index] };
-                                }
-                            }
-                        },
-                        else => |e| return e,
-                    };
-                    self.field_buffer[index] = byte;
-
-                    // we found a quote
-                    if (byte == quote_delimiter) {
-                        if (in_quote) {
-                            // this is the second quote, closing
-                            in_quote = false;
-                            // TODO: this doesn't enforce that the next char is a row_end_delimiter
-                        } else {
-                            // this is the first quote, opening
-                            in_quote = true;
-                            was_quote = true;
-                        }
-                    }
-
-                    if (in_quote) {
-                        // while we are in_quote, keep adding chars to the buffer
-                        index += 1;
-                        continue;
-                    } else {
-                        switch (byte) {
-                            field_end_delimiter => {
-                                if (was_quote) {
-                                    return Token{ .field = self.field_buffer[1..(index - 1)] };
-                                } else {
-                                    return Token{ .field = self.field_buffer[0..index] };
-                                }
-                            },
-                            row_end_delimiter => {
-                                if (index == 0) {
-                                    // we found a row end without a field, i.e. a trailing comma
-                                    // 1,2,3,\n
-                                    // return Token{ .field = "" };
-                                    return Token.row_end;
-                                } else {
-                                    // we found a row end while reading a field, no trailing comma
-                                    // 1,2,3\n
-                                    self.state = .row_end;
-                                    if (was_quote) {
-                                        return Token{ .field = self.field_buffer[1..(index - 1)] };
-                                    } else {
-                                        return Token{ .field = self.field_buffer[0..index] };
-                                    }
-                                }
-                            },
-                            else => index += 1,
-                        }
-                    }
-                }
-            },
-        }
-    }
-};
-
-test "tokenize" {
-    const allocator = std.testing.allocator;
-    const file = try fs.cwd().openFile("test/data/simple_tokenize.csv", .{});
-    defer file.close();
-    const reader = file.reader();
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
-
-    var tokenizer = CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
-
-    const first_row_tokens = [_][]const u8{ "1", "2", "3" };
-    for (first_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
-    }
-
-    const row_end_token = try tokenizer.next();
-    try std.testing.expect(row_end_token == Token.row_end);
-
-    const second_row_tokens = [_][]const u8{ "4", "5", "6" };
-    for (second_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
-    }
-
-    const second_row_end = try tokenizer.next();
-    try std.testing.expect(second_row_end == Token.row_end);
-
-    const third_row_tokens = [_][]const u8{ "7", "", "9" };
-    for (third_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        // std.debug.print("{}", received_token);
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
-    }
-
-    const third_row_end = try tokenizer.next();
-    try std.testing.expect(third_row_end == Token.row_end);
-
-    const fourth_row_tokens = [_][]const u8{ "10", " , , ", "12" };
-    for (fourth_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        // std.debug.print("{}", received_token);
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
-    }
-
-    const fourth_row_end = try tokenizer.next();
-    try std.testing.expect(fourth_row_end == Token.row_end);
-
-    const eof_token = try tokenizer.next();
-    try std.testing.expect(eof_token == Token.eof);
 }
 
 // ============================================================================
@@ -285,15 +171,13 @@ pub fn CsvParser(
         const number_of_fields: usize = Fields.len;
 
         reader: fs.File.Reader, // TODO: allow other types of readers
-        // tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
-        tokenizer: CsvTokenizer,
+        tokenizer: tokenize.CsvTokenizer,
         config: CsvConfig,
 
         pub fn init(field_buffer: []u8, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
             // var field_buffer = try allocator.alloc(u8, 4096);
-            // var tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
-            var tokenizer = CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
+            var tokenizer = tokenize.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
             var self = Self{
                 .reader = reader,
@@ -333,13 +217,13 @@ pub fn CsvParser(
                                     if (token.field.len == 0) {
                                         @field(draft_t, Field.name) = null;
                                     } else {
-                                        @field(draft_t, Field.name) = parse_utils.parseAtomic(NestedFieldType, Field.name, token.field) catch {
+                                        @field(draft_t, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
                                             return error.BadInput;
                                         };
                                     }
                                 },
                                 else => {
-                                    @field(draft_t, Field.name) = parse_utils.parseAtomic(Field.field_type, Field.name, token.field) catch {
+                                    @field(draft_t, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
                                         return error.BadInput;
                                     };
                                 },

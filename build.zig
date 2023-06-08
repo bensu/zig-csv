@@ -11,10 +11,6 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    // const csv_helper = b.addSharedLibrarySource("zig-csv", "lib/zig-csv/src/main.zig", b.version(0, 0, 1));
-    // csv_helper.setBuildMode(b.standardReleaseOptions());
-    // csv_helper.install();
-
     const exe = b.addExecutable("hello-world", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
