@@ -101,13 +101,13 @@ fn checkMemory() anyerror!void {
 }
 
 fn testCsvSerializer() !void {
-    // const from_path = "data/trade-indexes.csv";
-    // const to_path = "tmp/trade-indexes.csv";
-    // const T = Indexes;
+    const from_path = "data/trade-indexes.csv";
+    const to_path = "tmp/trade-indexes.csv";
+    const T = Indexes;
 
-    const from_path = "data/simple.csv";
-    const to_path = "tmp/simple.csv";
-    const T = Simple;
+    // const from_path = "data/simple.csv";
+    // const to_path = "tmp/simple.csv";
+    // const T = Simple;
 
     const allocator = std.heap.page_allocator;
     var from_file = try fs.cwd().openFile(from_path, .{});

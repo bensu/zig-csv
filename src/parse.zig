@@ -106,16 +106,13 @@ pub const CsvTokenizer = struct {
                 continue;
             } else {
                 switch (byte) {
-                    field_end_delimiter => {
-                        return Token{ .field = self.field_buffer[0..index] };
-                    },
+                    field_end_delimiter => return Token{ .field = self.field_buffer[0..index] },
                     row_end_delimiter => {
                         self.state = .row_end;
-                        return Token{ .field = self.field_buffer[0..index] };
+                        const index_before_end_of_row = (index - 1);
+                        return Token{ .field = self.field_buffer[0..index_before_end_of_row] };
                     },
-                    else => {
-                        index += 1;
-                    },
+                    else => index += 1,
                 }
             }
         }
