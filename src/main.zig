@@ -53,13 +53,16 @@ const Indexes = struct {
 };
 
 fn benchmark() anyerror!void {
-    const file_path = "data/trade-indexes.csv";
     const allocator = std.heap.page_allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
+    const file_path = "data/trade-indexes.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
 
-    var csv_parser_two = try parse.CsvParser(Indexes).init(allocator, reader, .{});
+    var csv_parser_two = try parse.CsvParser(Indexes).init(field_buffer, reader, .{});
     var rows: usize = 0;
     while (try csv_parser_two.next()) |_| {
         // std.debug.print("Row: {}\n", .{rows});
@@ -70,13 +73,16 @@ fn benchmark() anyerror!void {
 }
 
 fn checkMemory() anyerror!void {
-    const file_path = "data/trade-indexes.csv";
     const allocator = std.heap.page_allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
+    const file_path = "data/trade-indexes.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
 
-    var csv_parser = try parse.CsvParser(Indexes).init(allocator, reader, .{});
+    var csv_parser = try parse.CsvParser(Indexes).init(field_buffer, reader, .{});
     const first_row = try csv_parser.next();
     if (first_row) |row| {
         std.debug.print("First: {s}\n", .{row.series});
@@ -110,10 +116,13 @@ fn testCsvSerializer() !void {
     // const T = Simple;
 
     const allocator = std.heap.page_allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
     var from_file = try fs.cwd().openFile(from_path, .{});
     defer from_file.close();
     const reader = from_file.reader();
-    var csv_parser = try parse.CsvParser(T).init(allocator, reader, .{});
+    var csv_parser = try parse.CsvParser(T).init(field_buffer, reader, .{});
 
     var to_file = try fs.cwd().createFile(to_path, .{}); // (to_path, .{});
     defer to_file.close();
@@ -147,7 +156,10 @@ pub fn main() anyerror!void {
         defer second_file.close();
         const second_reader = second_file.reader();
 
-        var csv_parser = try parse.CsvParser(Simple).init(allocator, second_reader, .{});
+        var field_buffer = try allocator.alloc(u8, 4096);
+        defer allocator.free(field_buffer);
+
+        var csv_parser = try parse.CsvParser(Simple).init(field_buffer, second_reader, .{});
         const first_row = try csv_parser.next();
         std.debug.print("Parsed {?}\n", .{first_row});
         const second_row = try csv_parser.next();
@@ -161,7 +173,9 @@ pub fn main() anyerror!void {
         defer file.close();
         const reader = file.reader();
 
-        var csv_parser_two = try parse.CsvParser(IntId).init(allocator, reader, .{});
+        var field_buffer = try allocator.alloc(u8, 4096);
+        defer allocator.free(field_buffer);
+        var csv_parser_two = try parse.CsvParser(IntId).init(field_buffer, reader, .{});
         var rows: usize = 0;
         var id_sum: i64 = 0;
         while (try csv_parser_two.next()) |row| {

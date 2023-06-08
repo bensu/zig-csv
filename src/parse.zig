@@ -284,20 +284,18 @@ pub fn CsvParser(
 
         const number_of_fields: usize = Fields.len;
 
-        allocator: std.mem.Allocator,
         reader: fs.File.Reader, // TODO: allow other types of readers
         // tokenizer: csv_mod.CsvTokenizer(fs.File.Reader),
         tokenizer: CsvTokenizer,
         config: CsvConfig,
 
-        pub fn init(allocator: std.mem.Allocator, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
+        pub fn init(field_buffer: []u8, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
             // TODO: How should this buffer work?
-            var field_buffer = try allocator.alloc(u8, 4096);
+            // var field_buffer = try allocator.alloc(u8, 4096);
             // var tokenizer = try csv_mod.CsvTokenizer(fs.File.Reader).init(reader, buffer, .{});
             var tokenizer = CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
             var self = Self{
-                .allocator = allocator,
                 .reader = reader,
                 .config = config,
                 .tokenizer = tokenizer,
@@ -399,4 +397,84 @@ pub fn CsvParser(
             }
         }
     };
+}
+
+test "parse" {
+    var allocator = std.testing.allocator;
+    const file_path = "test/data/simple_parse.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+    const reader = file.reader();
+
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
+    const SimpleParse = struct {
+        id: u32,
+        name: []const u8,
+        unit: f32,
+        nilable: ?u64,
+
+        const Self = @This();
+
+        pub fn eql(a: Self, b: Self) bool {
+            return a.id == b.id and std.mem.eql(u8, a.name, b.name) and a.unit == b.unit and a.nilable == b.nilable;
+        }
+
+        pub fn testEql(a: Self, b: Self) !void {
+            try std.testing.expectEqual(a.id, b.id);
+            try std.testing.expect(std.mem.eql(u8, a.name, b.name));
+            try std.testing.expectEqual(a.unit, b.unit);
+            try std.testing.expectEqual(a.nilable, b.nilable);
+        }
+    };
+
+    var parser = try CsvParser(SimpleParse).init(field_buffer, reader, .{});
+
+    const maybe_first_row = try parser.next();
+    if (maybe_first_row) |row| {
+        const expected_row: SimpleParse = SimpleParse{
+            .id = 1,
+            .name = "abc",
+            .unit = 1.1,
+            .nilable = 111,
+        };
+        try expected_row.testEql(row);
+    } else {
+        std.debug.print("Error parsing first row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+    const maybe_second_row = try parser.next();
+    if (maybe_second_row) |row| {
+        const expected_row: SimpleParse = SimpleParse{
+            .id = 22,
+            .name = "cdef",
+            .unit = 22.2,
+            .nilable = null,
+        };
+        try expected_row.testEql(row);
+    } else {
+        std.debug.print("Error parsing second row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    const maybe_third_row = try parser.next();
+    if (maybe_third_row) |row| {
+        const expected_row: SimpleParse = SimpleParse{
+            .id = 333,
+            .name = "ghijk",
+            .unit = 33.33,
+            .nilable = 3333,
+        };
+        try expected_row.testEql(row);
+    } else {
+        std.debug.print("Error parsing third row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    const maybe_fourth_row = try parser.next();
+    if (maybe_fourth_row) |_| {
+        std.debug.print("Error parsing fourth row, expected null\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
 }
