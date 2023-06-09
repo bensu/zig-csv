@@ -250,7 +250,7 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
                 }
             }
         },
-        else => return error.InvalidType,
+        else => @compileError("Invalid type: " ++ @typeName(T) ++ ". Should be Optional or Struct"),
     }
 }
 
@@ -287,8 +287,6 @@ test "parse" {
         name: []const u8,
         unit: f32,
         nilable: ?u64,
-
-        const Self = @This();
     };
 
     var parser = try CsvParser(SimpleParse).init(field_buffer, reader, .{});
