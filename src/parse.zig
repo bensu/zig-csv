@@ -222,13 +222,35 @@ pub fn CsvParser(
 }
 
 fn testStructEql(comptime T: type, a: T, b: T) !void {
-    const Fields = @typeInfo(T).Struct.fields;
-    inline for (Fields) |Field| {
-        if (comptime Field.field_type == []const u8) {
-            try std.testing.expect(std.mem.eql(u8, a.name, b.name));
-        } else {
-            try std.testing.expectEqual(@field(a, Field.name), @field(b, Field.name));
-        }
+    const TypeInfo = @typeInfo(T);
+    switch (TypeInfo) {
+        .Optional => {
+            const NestedFieldType: type = TypeInfo.Optional.child;
+            if (a) |def_a| {
+                if (b) |def_b| {
+                    try testStructEql(NestedFieldType, def_a, def_b);
+                } else {
+                    try std.testing.expect(def_a == null);
+                }
+            } else {
+                if (b) |def_b| {
+                    try std.testing.expect(def_b == null);
+                } else {
+                    try std.testing.expect(true);
+                }
+            }
+        },
+        .Struct => {
+            const Fields = TypeInfo.Struct.fields;
+            inline for (Fields) |Field| {
+                if (comptime Field.field_type == []const u8) {
+                    try std.testing.expect(std.mem.eql(u8, a.name, b.name));
+                } else {
+                    try std.testing.expectEqual(@field(a, Field.name), @field(b, Field.name));
+                }
+            }
+        },
+        else => return error.InvalidType,
     }
 }
 
