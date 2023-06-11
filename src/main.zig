@@ -191,11 +191,59 @@ pub fn main() anyerror!void {
     if (false) {
         try checkMemory();
     }
-    if (true) {
+    if (false) {
         try testCsvSerializer();
     }
 }
 
-test "basic test" {
-    try std.testing.expectEqual(10, 3 + 7);
+fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize {
+    var from_file = try fs.cwd().openFile(from_path, .{});
+    defer from_file.close();
+    const reader = from_file.reader();
+
+    var to_file = try fs.cwd().createFile(to_path, .{});
+    defer to_file.close();
+    const writer = to_file.writer();
+
+    const allocator = std.testing.allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+    var parser = try parse.CsvParser(T).init(field_buffer, reader, .{});
+
+    var serializer = serialize.CsvSerializer(T).init(.{}, writer);
+
+    var rows: usize = 0;
+    try serializer.writeHeader();
+    while (try parser.next()) |row| {
+        rows = rows + 1;
+        try serializer.appendRow(row);
+    }
+
+    return rows;
+}
+
+test "end to end" {
+    const from_path = "test/data/simple_end_to_end.csv";
+    const to_path = "tmp/simple_end_to_end.csv";
+    const rows = try copyCsv(Simple, from_path, to_path);
+
+    const expected_rows: usize = 17;
+    try std.testing.expectEqual(expected_rows, rows);
+
+    var from_file_check = try fs.cwd().openFile(from_path, .{});
+    defer from_file_check.close();
+    const from_reader = from_file_check.reader();
+
+    var from_buffer: [1024]u8 = undefined;
+    const from_bytes_read = try from_reader.read(&from_buffer);
+
+    var to_file_check = try fs.cwd().openFile(to_path, .{});
+    defer to_file_check.close();
+    const to_reader = to_file_check.reader();
+
+    var to_buffer: [1024]u8 = undefined;
+    const to_bytes_read = try to_reader.read(&to_buffer);
+
+    try std.testing.expectEqual(from_bytes_read, to_bytes_read);
+    try std.testing.expect(std.mem.eql(u8, from_buffer[0..from_bytes_read], to_buffer[0..to_bytes_read]));
 }
