@@ -74,6 +74,7 @@ pub const NextUserError = error{
     BadInput,
     MissingFields,
     ExtraFields,
+    OutOfMemory,
 };
 
 // Errors from csv.zig:
@@ -110,17 +111,26 @@ pub fn CsvParser(
 
         const number_of_fields: usize = Fields.len;
 
+        allocator: std.mem.Allocator,
         reader: fs.File.Reader, // TODO: allow other types of readers
         tokenizer: tokenize.CsvTokenizer,
         config: CsvConfig,
 
-        pub fn init(field_buffer: []u8, reader: fs.File.Reader, config: CsvConfig) InitUserError!Self {
+        pub fn init(
+            allocator: std.mem.Allocator,
+            reader: fs.File.Reader,
+            config: CsvConfig,
+        ) InitUserError!Self {
+            // TODO: give user a way to describe what the longest field might be
+            var field_buffer = try allocator.alloc(u8, 4096);
+
             var tokenizer = tokenize.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
             var self = Self{
                 .reader = reader,
                 .config = config,
                 .tokenizer = tokenizer,
+                .allocator = allocator,
             };
 
             if (config.skip_first_row) {
@@ -143,10 +153,15 @@ pub fn CsvParser(
                     .row_end => return error.MissingFields,
                     .eof => return null,
                     .field => {
+                        // the user wants an immutable slice
+                        // we need to grab what we read, copy it somewhere it will remain valid
+                        // and then give them that slice
                         if (comptime Field.field_type == []const u8) {
-                            var new_buffer: [4096]u8 = undefined;
-                            std.mem.copy(u8, &new_buffer, token.field);
-                            @field(draft_t, Field.name) = new_buffer[0..token.field.len];
+                            const mutable_slice = self.allocator.alloc(u8, token.field.len) catch {
+                                return error.OutOfMemory;
+                            };
+                            std.mem.copy(u8, mutable_slice, token.field);
+                            @field(draft_t, Field.name) = mutable_slice[0..token.field.len];
                         } else {
                             const FieldInfo = @typeInfo(Field.field_type);
                             switch (FieldInfo) {
@@ -244,6 +259,7 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
             const Fields = TypeInfo.Struct.fields;
             inline for (Fields) |Field| {
                 if (comptime Field.field_type == []const u8) {
+                    // std.debug.print("Comparing {s} and {s}\n", .{ @field(a, Field.name), @field(b, Field.name) });
                     try std.testing.expect(std.mem.eql(u8, a.name, b.name));
                 } else {
                     try std.testing.expectEqual(@field(a, Field.name), @field(b, Field.name));
@@ -274,13 +290,11 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
 
 test "parse" {
     var allocator = std.testing.allocator;
+
     const file_path = "test/data/simple_parse.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
-
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
 
     const SimpleParse = struct {
         id: u32,
@@ -289,9 +303,16 @@ test "parse" {
         nilable: ?u64,
     };
 
-    var parser = try CsvParser(SimpleParse).init(field_buffer, reader, .{});
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try CsvParser(SimpleParse).init(arena.allocator(), reader, .{});
 
     const maybe_first_row = try parser.next();
+
+    // we the second struct before testing to see if the first row keeps its contents
+    const maybe_second_row = try parser.next();
+
     if (maybe_first_row) |row| {
         const expected_row: SimpleParse = SimpleParse{
             .id = 1,
@@ -304,7 +325,7 @@ test "parse" {
         std.debug.print("Error parsing first row\n", .{});
         try std.testing.expectEqual(false, true);
     }
-    const maybe_second_row = try parser.next();
+
     if (maybe_second_row) |row| {
         const expected_row: SimpleParse = SimpleParse{
             .id = 22,

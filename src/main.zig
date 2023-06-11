@@ -53,15 +53,16 @@ const Indexes = struct {
 
 fn benchmark() anyerror!void {
     const allocator = std.heap.page_allocator;
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
 
     const file_path = "data/trade-indexes.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
 
-    var csv_parser_two = try parse.CsvParser(Indexes).init(field_buffer, reader, .{});
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var csv_parser_two = try parse.CsvParser(Indexes).init(arena.allocator(), reader, .{});
     var rows: usize = 0;
     while (try csv_parser_two.next()) |_| {
         // std.debug.print("Row: {}\n", .{rows});
@@ -73,15 +74,16 @@ fn benchmark() anyerror!void {
 
 fn checkMemory() anyerror!void {
     const allocator = std.heap.page_allocator;
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
 
     const file_path = "data/trade-indexes.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
 
-    var csv_parser = try parse.CsvParser(Indexes).init(field_buffer, reader, .{});
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var csv_parser = try parse.CsvParser(Indexes).init(arena.allocator(), reader, .{});
     const first_row = try csv_parser.next();
     if (first_row) |row| {
         std.debug.print("First: {s}\n", .{row.series});
@@ -115,13 +117,15 @@ fn testCsvSerializer() !void {
     // const T = Simple;
 
     const allocator = std.heap.page_allocator;
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
 
     var from_file = try fs.cwd().openFile(from_path, .{});
     defer from_file.close();
     const reader = from_file.reader();
-    var csv_parser = try parse.CsvParser(T).init(field_buffer, reader, .{});
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var csv_parser = try parse.CsvParser(T).init(arena.allocator(), reader, .{});
 
     var to_file = try fs.cwd().createFile(to_path, .{}); // (to_path, .{});
     defer to_file.close();
@@ -155,10 +159,10 @@ pub fn main() anyerror!void {
         defer second_file.close();
         const second_reader = second_file.reader();
 
-        var field_buffer = try allocator.alloc(u8, 4096);
-        defer allocator.free(field_buffer);
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
 
-        var csv_parser = try parse.CsvParser(Simple).init(field_buffer, second_reader, .{});
+        var csv_parser = try parse.CsvParser(Simple).init(arena.allocator(), second_reader, .{});
         const first_row = try csv_parser.next();
         std.debug.print("Parsed {?}\n", .{first_row});
         const second_row = try csv_parser.next();
@@ -172,9 +176,10 @@ pub fn main() anyerror!void {
         defer file.close();
         const reader = file.reader();
 
-        var field_buffer = try allocator.alloc(u8, 4096);
-        defer allocator.free(field_buffer);
-        var csv_parser_two = try parse.CsvParser(IntId).init(field_buffer, reader, .{});
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        var csv_parser_two = try parse.CsvParser(IntId).init(arena.allocator(), reader, .{});
         var rows: usize = 0;
         var id_sum: i64 = 0;
         while (try csv_parser_two.next()) |row| {
@@ -206,9 +211,11 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     const writer = to_file.writer();
 
     const allocator = std.testing.allocator;
-    var field_buffer = try allocator.alloc(u8, 4096);
-    defer allocator.free(field_buffer);
-    var parser = try parse.CsvParser(T).init(field_buffer, reader, .{});
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try parse.CsvParser(T).init(arena.allocator(), reader, .{});
 
     var serializer = serialize.CsvSerializer(T).init(.{}, writer);
 
