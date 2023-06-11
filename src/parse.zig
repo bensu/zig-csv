@@ -319,6 +319,10 @@ test "parse" {
     }
 
     const maybe_third_row = try parser.next();
+
+    // we the fourth struct before testing to see if the third row keeps its contents
+    const maybe_fourth_row = try parser.next();
+
     if (maybe_third_row) |row| {
         const expected_row: SimpleParse = SimpleParse{
             .id = 333,
@@ -332,7 +336,6 @@ test "parse" {
         try std.testing.expectEqual(false, true);
     }
 
-    const maybe_fourth_row = try parser.next();
     if (maybe_fourth_row) |_| {
         std.debug.print("Error parsing fourth row, expected null\n", .{});
         try std.testing.expectEqual(false, true);
