@@ -23,6 +23,21 @@ pub inline fn parseAtomic(
                 return error.BadInput;
             };
         },
+        .Enum => |Enum| {
+            comptime var i = 0;
+            inline for (Enum.fields) |EnumField| {
+                if (std.mem.eql(u8, input_val, EnumField.name)) {
+                    return std.enums.nameCast(T, EnumField.name);
+                }
+                comptime i = i + 1;
+            }
+            if (Enum.is_exhaustive) {
+                return error.BadInput;
+            } else {
+                // we generate the first enum outside of the possible enums
+                return @intToEnum(T, i);
+            }
+        },
         else => {
             @compileError("Unsupported type " ++ @typeName(T) ++ " for field " ++ field_name);
         },
@@ -211,15 +226,11 @@ pub fn CsvParser(
                                 if (field.len == 0) {
                                     @field(draft_struct, F.name) = null;
                                 } else {
-                                    @field(draft_struct, F.name) = parseAtomic(Optional.child, F.name, field) catch {
-                                        return error.BadInput;
-                                    };
+                                    @field(draft_struct, F.name) = try parseAtomic(Optional.child, F.name, field);
                                 }
                             },
                             else => {
-                                @field(draft_struct, F.name) = parseAtomic(F.field_type, F.name, field) catch {
-                                    return error.BadInput;
-                                };
+                                @field(draft_struct, F.name) = try parseAtomic(F.field_type, F.name, field);
                             },
                         }
                         fields_added = fields_added + 1;
@@ -546,4 +557,91 @@ test "parse into arraylist!!! " {
 
     const expected_last_row = TightStruct{ .id = 10, .age = 29 };
     try testStructEql(TightStruct, expected_last_row, list.pop());
+}
+
+test "parse enums" {
+    var allocator = std.testing.allocator;
+
+    const file_path = "test/data/parse_enum.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    const OnOff = enum { ON, OFF };
+
+    const Color = enum(u2) {
+        red, // 00 -> 0
+        blue, // 01 -> 1
+        green, // 10 -> 2
+        _, // 11 -> 3
+    };
+
+    const EnumParse = struct {
+        id: u32,
+        is_on: OnOff,
+        color: Color,
+        unit: f32,
+        nilable: ?u64,
+    };
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try CsvParser(EnumParse).init(arena.allocator(), file.reader(), .{});
+
+    const maybe_first_row = try parser.next();
+
+    // we the second struct before testing to see if the first row keeps its contents
+    const maybe_second_row = try parser.next();
+
+    if (maybe_first_row) |row| {
+        const expected_row = EnumParse{
+            .id = 1,
+            .is_on = OnOff.ON,
+            .color = Color.red,
+            .unit = 1.1,
+            .nilable = 111,
+        };
+        try testStructEql(EnumParse, expected_row, row);
+    } else {
+        std.debug.print("Error parsing first row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    if (maybe_second_row) |row| {
+        const expected_row = EnumParse{
+            .id = 22,
+            .is_on = OnOff.OFF,
+            .color = Color.blue,
+            .unit = 22.2,
+            .nilable = null,
+        };
+        try testStructEql(EnumParse, expected_row, row);
+    } else {
+        std.debug.print("Error parsing second row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    const maybe_third_row = try parser.next();
+
+    // we the fourth struct before testing to see if the third row keeps its contents
+    const maybe_fourth_row = try parser.next();
+
+    if (maybe_third_row) |row| {
+        const expected_row = EnumParse{
+            .id = 333,
+            .is_on = OnOff.ON,
+            .color = @intToEnum(Color, 3),
+            .unit = 33.33,
+            .nilable = 3333,
+        };
+        try testStructEql(EnumParse, expected_row, row);
+    } else {
+        std.debug.print("Error parsing third row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    if (maybe_fourth_row) |_| {
+        std.debug.print("Error parsing fourth row, expected null\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
 }

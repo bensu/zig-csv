@@ -1,0 +1,4 @@
+id,name,color,unit,nilable,
+1,ON,red,1.1,111,
+22,OFF,blue,22.2,,
+333,ON,something else,33.33,3333,
