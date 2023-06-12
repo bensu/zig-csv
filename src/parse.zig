@@ -160,7 +160,7 @@ pub fn CsvParser(
         // Try to read a row into draft_struct and re-return it it if possible
         pub fn nextInto(self: *Self, draft_struct: *T) NextUserError!?*T {
             var fields_added: u32 = 0;
-            inline for (Fields) |Field| {
+            inline for (Fields) |F| {
                 const token = self.tokenizer.next() catch {
                     return error.BadInput;
                 };
@@ -168,56 +168,56 @@ pub fn CsvParser(
                 switch (token) {
                     .row_end => return error.MissingFields,
                     .eof => return null,
-                    .field => {
+                    .field => |field| {
                         // the user wants an immutable slice
                         // we need to grab what we read, copy it somewhere it will remain valid
                         // and then give them that slice
 
-                        const FieldInfo = @typeInfo(Field.field_type);
+                        const FieldInfo = @typeInfo(F.field_type);
                         switch (FieldInfo) {
                             .Array => |info| {
                                 if (comptime info.child != u8) {
-                                    @compileError("Arrays can only be u8 and '" ++ Field.name ++ "'' is " ++ @typeName(info.child));
+                                    @compileError("Arrays can only be u8 and '" ++ F.name ++ "'' is " ++ @typeName(info.child));
                                 }
 
                                 // TODO: should we drop bytes or should we throw an error?
-                                if (info.len < token.field.len) {
+                                if (info.len < field.len) {
                                     return error.BadInput;
                                 }
 
-                                std.mem.copy(u8, &@field(draft_struct, Field.name), token.field);
+                                std.mem.copy(u8, &@field(draft_struct, F.name), field);
                             },
                             .Pointer => |info| {
                                 switch (info.size) {
                                     .Slice => {
                                         if (info.child != u8) {
-                                            @compileError("Slices can only be u8 and '" ++ Field.name ++ "' is " ++ @typeName(info.child));
+                                            @compileError("Slices can only be u8 and '" ++ F.name ++ "' is " ++ @typeName(info.child));
                                         } else if (info.is_const) {
-                                            const mutable_slice = self.allocator.alloc(u8, token.field.len) catch {
+                                            const mutable_slice = self.allocator.alloc(u8, field.len) catch {
                                                 return error.OutOfMemory;
                                             };
-                                            std.mem.copy(u8, mutable_slice, token.field);
-                                            @field(draft_struct, Field.name) = mutable_slice[0..token.field.len];
+                                            std.mem.copy(u8, mutable_slice, field);
+                                            @field(draft_struct, F.name) = mutable_slice[0..field.len];
                                         } else {
-                                            @compileError("Mutable slices are not implemented and '" ++ Field.name ++ "' is a mutable slice");
+                                            @compileError("Mutable slices are not implemented and '" ++ F.name ++ "' is a mutable slice");
                                         }
                                     },
-                                    else => @compileError("Pointer not implemented yet and '" ++ Field.name ++ "'' is a pointer."),
+                                    else => @compileError("Pointer not implemented yet and '" ++ F.name ++ "'' is a pointer."),
                                 }
                             },
-                            .Optional => {
+                            .Optional => |Optional| {
                                 // Unwrap the optional
-                                const NestedFieldType: type = FieldInfo.Optional.child;
-                                if (token.field.len == 0) {
-                                    @field(draft_struct, Field.name) = null;
+                                // const NestedFieldType: type = Optional.child;
+                                if (field.len == 0) {
+                                    @field(draft_struct, F.name) = null;
                                 } else {
-                                    @field(draft_struct, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
+                                    @field(draft_struct, F.name) = parseAtomic(Optional.child, F.name, field) catch {
                                         return error.BadInput;
                                     };
                                 }
                             },
                             else => {
-                                @field(draft_struct, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
+                                @field(draft_struct, F.name) = parseAtomic(F.field_type, F.name, field) catch {
                                     return error.BadInput;
                                 };
                             },
