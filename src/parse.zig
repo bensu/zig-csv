@@ -142,6 +142,7 @@ pub fn CsvParser(
 
         // Try to read a row and return a parsed T out of it if possible
         pub fn next(self: *Self) NextUserError!?T {
+            // TODO: Who should be managing draft_t's memory?
             var draft_t: T = undefined;
             var fields_added: u32 = 0;
             inline for (Fields) |Field| {
@@ -156,33 +157,56 @@ pub fn CsvParser(
                         // the user wants an immutable slice
                         // we need to grab what we read, copy it somewhere it will remain valid
                         // and then give them that slice
-                        if (comptime Field.field_type == []const u8) {
-                            const mutable_slice = self.allocator.alloc(u8, token.field.len) catch {
-                                return error.OutOfMemory;
-                            };
-                            std.mem.copy(u8, mutable_slice, token.field);
-                            @field(draft_t, Field.name) = mutable_slice[0..token.field.len];
-                        } else {
-                            const FieldInfo = @typeInfo(Field.field_type);
-                            switch (FieldInfo) {
-                                .Optional => {
-                                    const NestedFieldType: type = FieldInfo.Optional.child;
-                                    if (token.field.len == 0) {
-                                        @field(draft_t, Field.name) = null;
-                                    } else {
-                                        @field(draft_t, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
-                                            return error.BadInput;
-                                        };
-                                    }
-                                },
-                                else => {
-                                    @field(draft_t, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
+
+                        const FieldInfo = @typeInfo(Field.field_type);
+                        switch (FieldInfo) {
+                            .Array => |info| {
+                                if (comptime info.child != u8) {
+                                    @compileError("Arrays can only be u8 and '" ++ Field.name ++ "'' is " ++ @typeName(info.child));
+                                }
+
+                                // TODO: should we drop bytes or should we throw an error?
+                                if (info.len < token.field.len) {
+                                    return error.BadInput;
+                                }
+
+                                std.mem.copy(u8, &@field(draft_t, Field.name), token.field);
+                            },
+                            .Pointer => |info| {
+                                switch (info.size) {
+                                    .Slice => {
+                                        if (info.child != u8) {
+                                            @compileError("Slices can only be u8 and '" ++ Field.name ++ "' is " ++ @typeName(info.child));
+                                        } else if (info.is_const) {
+                                            const mutable_slice = self.allocator.alloc(u8, token.field.len) catch {
+                                                return error.OutOfMemory;
+                                            };
+                                            std.mem.copy(u8, mutable_slice, token.field);
+                                            @field(draft_t, Field.name) = mutable_slice[0..token.field.len];
+                                        } else {
+                                            @compileError("Mutable slices are not implemented and '" ++ Field.name ++ "' is a mutable slice");
+                                        }
+                                    },
+                                    else => @compileError("Pointer not implemented yet and '" ++ Field.name ++ "'' is a pointer."),
+                                }
+                            },
+                            .Optional => {
+                                // Unwrap the optional
+                                const NestedFieldType: type = FieldInfo.Optional.child;
+                                if (token.field.len == 0) {
+                                    @field(draft_t, Field.name) = null;
+                                } else {
+                                    @field(draft_t, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
                                         return error.BadInput;
                                     };
-                                },
-                            }
+                                }
+                            },
+                            else => {
+                                @field(draft_t, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
+                                    return error.BadInput;
+                                };
+                            },
                         }
-                        // std.debug.print("Adding field\n", .{});
                         fields_added = fields_added + 1;
                     },
                 }
@@ -294,7 +318,6 @@ test "parse" {
     const file_path = "test/data/simple_parse.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
-    const reader = file.reader();
 
     const SimpleParse = struct {
         id: u32,
@@ -306,7 +329,7 @@ test "parse" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(SimpleParse).init(arena.allocator(), reader, .{});
+    var parser = try CsvParser(SimpleParse).init(arena.allocator(), file.reader(), .{});
 
     const maybe_first_row = try parser.next();
 
@@ -359,6 +382,53 @@ test "parse" {
 
     if (maybe_fourth_row) |_| {
         std.debug.print("Error parsing fourth row, expected null\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+}
+
+test "parse mutable slices" {
+    const SliceParse = struct {
+        id: u32,
+        name: []const u8,
+        unit: f32,
+        nilable: ?u64,
+    };
+    var allocator = std.testing.allocator;
+
+    const file_path = "test/data/simple_parse.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try CsvParser(SliceParse).init(arena.allocator(), file.reader(), .{});
+
+    const maybe_first_row = try parser.next();
+    const maybe_second_row = try parser.next();
+    if (maybe_first_row) |row| {
+        const expected_row = SliceParse{
+            .id = 1,
+            .name = "abc",
+            .unit = 1.1,
+            .nilable = 111,
+        };
+        try testStructEql(SliceParse, expected_row, row);
+    } else {
+        std.debug.print("Error parsing first row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    if (maybe_second_row) |row| {
+        const expected_row = SliceParse{
+            .id = 22,
+            .name = "cdef",
+            .unit = 22.2,
+            .nilable = null,
+        };
+        try testStructEql(SliceParse, expected_row, row);
+    } else {
+        std.debug.print("Error parsing second row\n", .{});
         try std.testing.expectEqual(false, true);
     }
 }
