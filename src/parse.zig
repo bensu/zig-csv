@@ -124,7 +124,10 @@ pub fn CsvParser(
             // TODO: give user a way to describe what the longest field might be
             var field_buffer = try allocator.alloc(u8, 4096);
 
-            var tokenizer = tokenize.CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
+            var tokenizer = tokenize.CsvTokenizer{
+                .reader = reader,
+                .field_buffer = field_buffer,
+            };
 
             var self = Self{
                 .reader = reader,
@@ -142,8 +145,18 @@ pub fn CsvParser(
 
         // Try to read a row and return a parsed T out of it if possible
         pub fn next(self: *Self) NextUserError!?T {
-            // TODO: Who should be managing draft_t's memory?
-            var draft_t: T = undefined;
+            // TODO: Who should be managing draft_struct's memory?
+            var draft_struct: T = undefined;
+            const maybe = try self.nextInto(&draft_struct);
+            if (maybe) |_| {
+                return draft_struct;
+            } else {
+                return null;
+            }
+        }
+
+        // Try to read a row into draft_struct and re-return it it if possible
+        pub fn nextInto(self: *Self, draft_struct: *T) NextUserError!?*T {
             var fields_added: u32 = 0;
             inline for (Fields) |Field| {
                 const token = self.tokenizer.next() catch {
@@ -170,7 +183,7 @@ pub fn CsvParser(
                                     return error.BadInput;
                                 }
 
-                                std.mem.copy(u8, &@field(draft_t, Field.name), token.field);
+                                std.mem.copy(u8, &@field(draft_struct, Field.name), token.field);
                             },
                             .Pointer => |info| {
                                 switch (info.size) {
@@ -182,7 +195,7 @@ pub fn CsvParser(
                                                 return error.OutOfMemory;
                                             };
                                             std.mem.copy(u8, mutable_slice, token.field);
-                                            @field(draft_t, Field.name) = mutable_slice[0..token.field.len];
+                                            @field(draft_struct, Field.name) = mutable_slice[0..token.field.len];
                                         } else {
                                             @compileError("Mutable slices are not implemented and '" ++ Field.name ++ "' is a mutable slice");
                                         }
@@ -194,15 +207,15 @@ pub fn CsvParser(
                                 // Unwrap the optional
                                 const NestedFieldType: type = FieldInfo.Optional.child;
                                 if (token.field.len == 0) {
-                                    @field(draft_t, Field.name) = null;
+                                    @field(draft_struct, Field.name) = null;
                                 } else {
-                                    @field(draft_t, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
+                                    @field(draft_struct, Field.name) = parseAtomic(NestedFieldType, Field.name, token.field) catch {
                                         return error.BadInput;
                                     };
                                 }
                             },
                             else => {
-                                @field(draft_t, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
+                                @field(draft_struct, Field.name) = parseAtomic(Field.field_type, Field.name, token.field) catch {
                                     return error.BadInput;
                                 };
                             },
@@ -230,7 +243,7 @@ pub fn CsvParser(
 
             // were all the fields added?
             if (fields_added == number_of_fields) {
-                return draft_t;
+                return draft_struct;
             } else {
                 // ERROR
                 return null;
@@ -431,4 +444,51 @@ test "parse mutable slices" {
         std.debug.print("Error parsing second row\n", .{});
         try std.testing.expectEqual(false, true);
     }
+}
+
+test "parse into previously allocated structs" {
+    const TightStruct = struct { id: i64, age: u32 };
+
+    var allocator = std.testing.allocator;
+
+    const file_path = "test/data/simple_end_to_end.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    const tight_array: []TightStruct = try arena_allocator.alloc(TightStruct, 17);
+
+    var parser = try CsvParser(TightStruct).init(arena_allocator, file.reader(), .{});
+
+    const maybe_first_row = try parser.nextInto(&tight_array[0]);
+    const maybe_second_row = try parser.nextInto(&tight_array[1]);
+
+    if (maybe_first_row) |_| {
+        const expected_row = TightStruct{ .id = 1, .age = 32 };
+        try testStructEql(TightStruct, expected_row, tight_array[0]);
+    } else {
+        std.debug.print("Error parsing first row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    if (maybe_second_row) |_| {
+        const expected_row = TightStruct{ .id = 1, .age = 28 };
+        try testStructEql(TightStruct, expected_row, tight_array[1]);
+    } else {
+        std.debug.print("Error parsing second row\n", .{});
+        try std.testing.expectEqual(false, true);
+    }
+
+    var i: usize = 2; // we already advanced the parser twice
+    while (i < 17) {
+        const maybe_result = try parser.nextInto(&tight_array[i]);
+        if (maybe_result == null) try std.testing.expect(false);
+        i += 1;
+    }
+
+    const expected_last_row = TightStruct{ .id = 10, .age = 29 };
+    try testStructEql(TightStruct, expected_last_row, tight_array[16]);
 }
