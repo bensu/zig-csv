@@ -492,3 +492,57 @@ test "parse into previously allocated structs" {
     const expected_last_row = TightStruct{ .id = 10, .age = 29 };
     try testStructEql(TightStruct, expected_last_row, tight_array[16]);
 }
+
+test "parse into arraylist!!! " {
+    const TightStruct = struct { id: i64, age: u32 };
+
+    var allocator = std.testing.allocator;
+
+    const file_path = "test/data/simple_end_to_end.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    // var arena = std.heap.ArenaAllocator.init(allocator);
+    // defer arena.deinit();
+    // const arena_allocator = arena.allocator();
+
+    var list = std.ArrayList(TightStruct).init(allocator);
+    defer list.deinit();
+
+    var parser = try CsvParser(TightStruct).init(allocator, file.reader(), .{});
+
+    // We can use parser.nextInto with list.addOne
+    {
+        const elem = try list.addOne();
+        const maybe_row = try parser.nextInto(elem);
+        if (maybe_row) |_| {
+            const expected_row = TightStruct{ .id = 1, .age = 32 };
+            try testStructEql(TightStruct, expected_row, elem.*);
+        } else {
+            std.debug.print("Error parsing first row\n", .{});
+            try std.testing.expectEqual(false, true);
+        }
+    }
+
+    {
+        const elem = try list.addOne();
+        const maybe_row = try parser.nextInto(elem);
+        if (maybe_row) |_| {
+            const expected_row = TightStruct{ .id = 1, .age = 28 };
+            try testStructEql(TightStruct, expected_row, elem.*);
+        } else {
+            std.debug.print("Error parsing second row\n", .{});
+            try std.testing.expectEqual(false, true);
+        }
+    }
+
+    // We can use parser.next with list.append
+    while (try parser.next()) |row| {
+        try list.append(row);
+    }
+
+    try std.testing.expectEqual(list.items.len, 17);
+
+    const expected_last_row = TightStruct{ .id = 10, .age = 29 };
+    try testStructEql(TightStruct, expected_last_row, list.pop());
+}
