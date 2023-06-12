@@ -116,6 +116,8 @@ pub fn CsvParser(
         tokenizer: tokenize.CsvTokenizer,
         config: CsvConfig,
 
+        // The caller has to free the allocator when it is done with everything that
+        // was parsed / allocated
         pub fn init(
             allocator: std.mem.Allocator,
             reader: fs.File.Reader,
@@ -502,14 +504,13 @@ test "parse into arraylist!!! " {
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    // var arena = std.heap.ArenaAllocator.init(allocator);
-    // defer arena.deinit();
-    // const arena_allocator = arena.allocator();
-
     var list = std.ArrayList(TightStruct).init(allocator);
     defer list.deinit();
 
-    var parser = try CsvParser(TightStruct).init(allocator, file.reader(), .{});
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var parser = try CsvParser(TightStruct).init(arena.allocator(), file.reader(), .{});
 
     // We can use parser.nextInto with list.addOne
     {
