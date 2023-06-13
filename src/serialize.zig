@@ -31,6 +31,10 @@ fn serializeAtomic(comptime T: type, writer: fs.File.Writer, value: T) !void {
             }
         },
         .Enum => |Enum| {
+            if (!Enum.is_exhaustive) {
+                @compileError("Non exhaustive enums are not supported: " ++ @typeName(T));
+            }
+
             inline for (Enum.fields) |EnumField| {
                 if (std.meta.isTag(value, EnumField.name)) {
                     _ = try writer.writeAll(EnumField.name);
