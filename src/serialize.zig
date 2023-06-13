@@ -88,34 +88,46 @@ pub fn CsvSerializer(
         }
 
         pub fn appendRow(self: *Self, data: T) !void {
-            inline for (Fields) |Field| {
-                const FieldType = Field.field_type;
-                const field_val: FieldType = @field(data, Field.name);
-                if (comptime FieldType == []const u8) {
-                    if (field_val.len != 0) {
-                        try self.writer.writeAll(field_val);
-                    }
-                } else {
-                    const FieldInfo = @typeInfo(FieldType);
-                    switch (FieldInfo) {
-                        .Optional => {
-                            const NestedFieldType: type = FieldInfo.Optional.child;
-                            if (field_val) |v| {
-                                try serializeAtomic(NestedFieldType, self.writer, v);
-                            }
-                        },
-                        .Union => |U| {
-                            inline for (U.fields) |UF| {
-                                // switch over the fields and use the right serialization
-                                if (std.meta.isTag(field_val, UF.name)) {
-                                    try serializeAtomic(UF.field_type, self.writer, @field(field_val, UF.name));
+            inline for (Fields) |F| {
+                const field_val: F.field_type = @field(data, F.name);
+                switch (@typeInfo(F.field_type)) {
+                    .Array => |info| {
+                        if (comptime info.child != u8) {
+                            @compileError("Arrays can only be u8 and '" ++ F.name ++ "'' is " ++ @typeName(info.child));
+                        }
+
+                        if (field_val.len != 0) {
+                            try self.writer.writeAll(field_val);
+                        }
+                    },
+                    .Pointer => |info| {
+                        switch (info.size) {
+                            .Slice => {
+                                if (info.child != u8) {
+                                    @compileError("Slices can only be u8 and '" ++ F.name ++ "' is " ++ @typeName(info.child));
                                 }
+                                if (field_val.len != 0) {
+                                    try self.writer.writeAll(field_val);
+                                }
+                            },
+                            else => @compileError("Pointer not implemented yet and '" ++ F.name ++ "'' is a pointer."),
+                        }
+                    },
+                    .Optional => |Optional| {
+                        if (field_val) |v| {
+                            try serializeAtomic(Optional.child, self.writer, v);
+                        }
+                    },
+                    .Union => |U| {
+                        inline for (U.fields) |UF| {
+                            if (std.meta.isTag(field_val, UF.name)) {
+                                try serializeAtomic(UF.field_type, self.writer, @field(field_val, UF.name));
                             }
-                        },
-                        else => {
-                            try serializeAtomic(FieldType, self.writer, field_val);
-                        },
-                    }
+                        }
+                    },
+                    else => {
+                        try serializeAtomic(F.field_type, self.writer, field_val);
+                    },
                 }
                 try self.writer.writeByte(',');
             }
