@@ -23,9 +23,7 @@ pub inline fn parseAtomic(
             }
         },
         .Int => {
-            std.debug.print("parsing int ", .{});
             return std.fmt.parseInt(T, input_val, 0) catch {
-                std.debug.print("bad input", .{});
                 return error.BadInput;
             };
         },
