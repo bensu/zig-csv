@@ -9,25 +9,32 @@ const utils = @import("utils.zig");
 
 // TODO: generalize to all atomic types
 fn serializeAtomic(comptime T: type, writer: fs.File.Writer, value: T) !void {
-    switch (T) {
-        i8, i16, i32, i64, i128, u8, u16, u32, u64, u128 => {
+    switch (@typeInfo(T)) {
+        .Int => {
             var buffer: [20]u8 = undefined;
             const buffer_slice = buffer[0..];
             const bytes_written = try std.fmt.bufPrint(buffer_slice, "{}", .{value});
             _ = try writer.write(bytes_written);
         },
-        f16, f32, f64, f128 => {
+        .Float => {
             var buffer: [20]u8 = undefined;
             const buffer_slice = buffer[0..];
             // TODO: how floating point is printed should be configurable
             const bytes_written = try std.fmt.bufPrint(buffer_slice, "{e}", .{value});
             _ = try writer.write(bytes_written);
         },
-        bool => {
+        .Bool => {
             if (value) {
                 _ = try writer.writeAll("true");
             } else {
                 _ = try writer.writeAll("false");
+            }
+        },
+        .Enum => |Enum| {
+            inline for (Enum.fields) |EnumField| {
+                if (std.meta.isTag(value, EnumField.name)) {
+                    _ = try writer.writeAll(EnumField.name);
+                }
             }
         },
         else => @compileError("Unsupported atomic type: " ++ @typeName(T)),
@@ -120,6 +127,8 @@ test "serialize unions" {
     var file = try fs.cwd().createFile(file_path, .{});
     defer file.close();
 
+    const Color = enum { red, green, blue };
+
     const Tag = enum { int, uint, boolean };
 
     const SampleUnion = union(Tag) {
@@ -128,7 +137,7 @@ test "serialize unions" {
         boolean: bool,
     };
 
-    const UnionStruct = struct { union_field: SampleUnion };
+    const UnionStruct = struct { color: Color, union_field: SampleUnion };
 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -136,9 +145,18 @@ test "serialize unions" {
     var serializer = CsvSerializer(UnionStruct).init(.{}, file.writer());
 
     try serializer.writeHeader();
-    try serializer.appendRow(UnionStruct{ .union_field = SampleUnion{ .int = -1 } });
-    try serializer.appendRow(UnionStruct{ .union_field = SampleUnion{ .uint = 32 } });
-    try serializer.appendRow(UnionStruct{ .union_field = SampleUnion{ .boolean = true } });
+    try serializer.appendRow(UnionStruct{
+        .color = Color.red,
+        .union_field = SampleUnion{ .int = -1 },
+    });
+    try serializer.appendRow(UnionStruct{
+        .color = Color.green,
+        .union_field = SampleUnion{ .uint = 32 },
+    });
+    try serializer.appendRow(UnionStruct{
+        .color = Color.blue,
+        .union_field = SampleUnion{ .boolean = true },
+    });
 
     const to_path = "tmp/serialize_union.csv";
     var to_file = try fs.cwd().openFile(to_path, .{});

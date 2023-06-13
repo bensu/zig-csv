@@ -1,4 +1,4 @@
-union_field,
--1,
-32,
-true,
+color,union_field,
+red,-1,
+green,32,
+blue,true,
