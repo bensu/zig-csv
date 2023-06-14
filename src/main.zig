@@ -55,7 +55,7 @@ const Indexes = struct {
 fn benchmark() anyerror!void {
     const allocator = std.heap.page_allocator;
 
-    const file_path = "data/trade-indexes.csv";
+    const file_path = "benchmark/data/trade-indexes.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
@@ -190,7 +190,7 @@ pub fn main() anyerror!void {
         std.debug.print("Number of rows: {}\n", .{rows});
         std.debug.print("Sum of id: {}\n", .{id_sum});
     }
-    if (false) {
+    if (true) {
         std.debug.print("Starting benchmark\n", .{});
         try benchmark();
     }
