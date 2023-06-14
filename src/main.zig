@@ -52,10 +52,20 @@ const Indexes = struct {
     }
 };
 
+const WorldCityPopulation = struct {
+    country: []const u8,
+    city: []const u8,
+    accent_city: []const u8,
+    region: []const u8,
+    population: ?u64,
+    latitude: f64,
+    longitude: f64,
+};
+
 fn benchmark() anyerror!void {
     const allocator = std.heap.page_allocator;
 
-    const file_path = "benchmark/data/trade-indexes.csv";
+    const file_path = "benchmark/data/worldcitiespop.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
     const reader = file.reader();
@@ -63,14 +73,17 @@ fn benchmark() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var csv_parser_two = try parse.CsvParser(Indexes).init(arena.allocator(), reader, .{});
-    var rows: usize = 0;
-    while (try csv_parser_two.next()) |_| {
+    var parser = try parse.CsvParser(WorldCityPopulation).init(arena.allocator(), reader, .{});
+    var population: u64 = 0;
+    while (try parser.next()) |row| {
+        if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
+            population += (row.population orelse 0);
+        }
         // std.debug.print("Row: {}\n", .{rows});
         // std.debug.print("{}\n", .{row});
-        rows = rows + 1;
+        // rows = rows + 1;
     }
-    std.debug.print("Number of rows: {}\n", .{rows});
+    std.debug.print("Number of US-MA population: {}\n", .{population});
 }
 
 fn checkMemory() anyerror!void {
