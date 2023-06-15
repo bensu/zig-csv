@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug",
+            "program": "${workspaceFolder}/zig-cache//o/ee80378e85250c282caa858432e2ec3f/test",
+            "args": ["src/main.zig"],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
