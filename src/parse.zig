@@ -197,6 +197,9 @@ pub fn CsvParser(
 
                         const FieldInfo = @typeInfo(F.field_type);
                         switch (FieldInfo) {
+                            .Void => {
+                                @field(draft_struct, F.name) = {};
+                            },
                             .Array => |info| {
                                 if (comptime info.child != u8) {
                                     @compileError("Arrays can only be u8 and '" ++ F.name ++ "'' is " ++ @typeName(info.child));
@@ -310,6 +313,7 @@ pub fn CsvParser(
 fn testStructEql(comptime T: type, a: T, b: T) !void {
     const TypeInfo = @typeInfo(T);
     switch (TypeInfo) {
+        .Void => {},
         .Optional => {
             const NestedFieldType: type = TypeInfo.Optional.child;
             if (a) |def_a| {
@@ -361,7 +365,7 @@ fn testStructEql(comptime T: type, a: T, b: T) !void {
         .Int, .Float, .Bool, .Enum => {
             try std.testing.expectEqual(a, b);
         },
-        else => @compileError("Invalid type: " ++ @typeName(T) ++ ". Should be Optional or Struct"),
+        else => @compileError("Invalid type: " ++ @typeName(T) ++ ". Should be void, struct, enum, union, optional, int, float, or bool"),
     }
 }
 
@@ -624,7 +628,7 @@ test "parse enums" {
         id: u32,
         is_on: OnOff,
         color: Color,
-        unit: f32,
+        unit: void,
         nilable: ?u64,
     };
 
@@ -643,7 +647,7 @@ test "parse enums" {
             .id = 1,
             .is_on = OnOff.ON,
             .color = Color.red,
-            .unit = 1.1,
+            .unit = {},
             .nilable = 111,
         };
         try testStructEql(EnumParse, expected_row, row);
@@ -657,7 +661,7 @@ test "parse enums" {
             .id = 22,
             .is_on = OnOff.OFF,
             .color = Color.blue,
-            .unit = 22.2,
+            .unit = {},
             .nilable = null,
         };
         try testStructEql(EnumParse, expected_row, row);
@@ -676,7 +680,7 @@ test "parse enums" {
             .id = 333,
             .is_on = OnOff.ON,
             .color = @intToEnum(Color, 3),
-            .unit = 33.33,
+            .unit = {},
             .nilable = 3333,
         };
         try testStructEql(EnumParse, expected_row, row);
