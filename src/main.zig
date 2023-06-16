@@ -54,12 +54,12 @@ const Indexes = struct {
 
 const WorldCityPopulation = struct {
     country: []const u8,
-    city: []const u8,
-    accent_city: []const u8,
+    city: void,
+    accent_city: void,
     region: []const u8,
     population: ?u64,
-    latitude: f64,
-    longitude: f64,
+    latitude: void,
+    longitude: void,
 };
 
 fn benchmark() anyerror!void {
