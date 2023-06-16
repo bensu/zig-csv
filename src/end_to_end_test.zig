@@ -24,7 +24,7 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try parse.CsvParser(T).init(arena.allocator(), reader, .{});
+    var parser = try parse.CsvParser(fs.File.Reader, T).init(arena.allocator(), reader, .{});
 
     var serializer = serialize.CsvSerializer(T).init(.{}, writer);
 
