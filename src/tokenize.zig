@@ -148,53 +148,85 @@ pub const CsvTokenizer = struct {
     }
 };
 
-test "tokenize" {
-    const allocator = std.testing.allocator;
-    const file = try fs.cwd().openFile("test/data/simple_tokenize.csv", .{});
-    defer file.close();
+fn testFile(file: fs.File, expected_token_rows: [][]u8) !void {
     const reader = file.reader();
+
+    const allocator = std.testing.allocator;
     var field_buffer = try allocator.alloc(u8, 4096);
     defer allocator.free(field_buffer);
 
     var tokenizer = CsvTokenizer{ .reader = reader, .field_buffer = field_buffer };
 
-    const first_row_tokens = [_][]const u8{ "1", "2", "3" };
-    for (first_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
+    for (expected_token_rows) |expected_row| {
+        for (expected_row) |expected_token| {
+            const received_token = try tokenizer.next();
+            try std.testing.expectEqualStrings(expected_token, received_token.field);
+        }
+        const row_end_token = try tokenizer.next();
+        try std.testing.expect(row_end_token == Token.row_end);
     }
 
-    const row_end_token = try tokenizer.next();
-    try std.testing.expect(row_end_token == Token.row_end);
+    const eof_token = try tokenizer.next();
+    try std.testing.expect(eof_token == Token.eof);
+}
 
-    const second_row_tokens = [_][]const u8{ "4", "5", "6" };
-    for (second_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
+test "tokenize" {
+    const file = try fs.cwd().openFile("test/data/simple_tokenize.csv", .{});
+    defer file.close();
+
+    const allocator = std.testing.allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
+    var tokenizer = CsvTokenizer{ .reader = file.reader(), .field_buffer = field_buffer };
+
+    const expected_token_rows = [5][3][]const u8{
+        [_][]const u8{ "1", "2", "3" },
+        [_][]const u8{ "4", "5", "6" },
+        [_][]const u8{ "7", "", "9" },
+        [_][]const u8{ "10", " , , ", "12" },
+        [_][]const u8{ "13", "14", "" },
+    };
+
+    for (expected_token_rows) |expected_row| {
+        for (expected_row) |expected_token| {
+            const received_token = try tokenizer.next();
+            try std.testing.expectEqualStrings(expected_token, received_token.field);
+        }
+        const row_end_token = try tokenizer.next();
+        try std.testing.expect(row_end_token == Token.row_end);
     }
 
-    const second_row_end = try tokenizer.next();
-    try std.testing.expect(second_row_end == Token.row_end);
+    const eof_token = try tokenizer.next();
+    try std.testing.expect(eof_token == Token.eof);
+}
 
-    const third_row_tokens = [_][]const u8{ "7", "", "9" };
-    for (third_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        // std.debug.print("{}", received_token);
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
+test "tokenize enums" {
+    const file = try fs.cwd().openFile("test/data/parse_enum.csv", .{});
+    defer file.close();
+
+    const allocator = std.testing.allocator;
+    var field_buffer = try allocator.alloc(u8, 4096);
+    defer allocator.free(field_buffer);
+
+    const expected_token_rows = [4][5][]const u8{
+        [_][]const u8{ "id", "name", "color", "unit", "nilable" },
+        [_][]const u8{ "1", "ON", "red", "1.1", "111" },
+        [_][]const u8{ "22", "OFF", "blue", "22.2", "" },
+        [_][]const u8{ "333", "ON", "something else", "33.33", "3333" },
+    };
+
+    var tokenizer = CsvTokenizer{ .reader = file.reader(), .field_buffer = field_buffer };
+
+    for (expected_token_rows) |expected_row| {
+        for (expected_row) |expected_token| {
+            const received_token = try tokenizer.next();
+            // debugToken(received_token);
+            try std.testing.expectEqualStrings(expected_token, received_token.field);
+        }
+        const row_end_token = try tokenizer.next();
+        try std.testing.expect(row_end_token == Token.row_end);
     }
-
-    const third_row_end = try tokenizer.next();
-    try std.testing.expect(third_row_end == Token.row_end);
-
-    const fourth_row_tokens = [_][]const u8{ "10", " , , ", "12" };
-    for (fourth_row_tokens) |expected_token| {
-        const received_token = try tokenizer.next();
-        // std.debug.print("{}", received_token);
-        try std.testing.expectEqualStrings(expected_token, received_token.field);
-    }
-
-    const fourth_row_end = try tokenizer.next();
-    try std.testing.expect(fourth_row_end == Token.row_end);
 
     const eof_token = try tokenizer.next();
     try std.testing.expect(eof_token == Token.eof);

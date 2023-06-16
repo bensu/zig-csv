@@ -216,8 +216,9 @@ pub fn main() anyerror!void {
 }
 
 test "call all tests" {
-    // _ = @import("end_to_end_test.zig");
-    // _ = @import("serialize.zig");
-    // _ = @import("parse.zig");
-    _ = @import("new_tokenizer.zig");
+    _ = @import("tokenize.zig");
+    _ = @import("fast_tokenize.zig");
+    _ = @import("parse.zig");
+    _ = @import("serialize.zig");
+    _ = @import("end_to_end_test.zig");
 }

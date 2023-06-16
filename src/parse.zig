@@ -2,7 +2,8 @@ const std = @import("std");
 const fs = std.fs;
 const Type = std.builtin.Type;
 
-const tokenize = @import("tokenize.zig");
+const tokenize = @import("fast_tokenize.zig");
+// const tokenize = @import("tokenize.zig");
 
 // ============================================================================
 // Utils
@@ -148,12 +149,9 @@ pub fn CsvParser(
             config: CsvConfig,
         ) InitUserError!Self {
             // TODO: give user a way to describe what the longest field might be
-            var field_buffer = try allocator.alloc(u8, 4096);
 
-            var tokenizer = tokenize.CsvTokenizer{
-                .reader = reader,
-                .field_buffer = field_buffer,
-            };
+            // var field_buffer = try allocator.alloc(u8, 4096);
+            var tokenizer = tokenize.CsvTokenizer{ .reader = reader };
 
             var self = Self{
                 .reader = reader,
@@ -188,7 +186,7 @@ pub fn CsvParser(
                 const token = self.tokenizer.next() catch {
                     return error.BadInput;
                 };
-                // std.debug.print("Getting next token {s}\n", .{token.field});
+                // tokenize.debugToken(token);
                 switch (token) {
                     .row_end => return error.MissingFields,
                     .eof => return null,
@@ -282,8 +280,7 @@ pub fn CsvParser(
             if (fields_added == number_of_fields) {
                 return draft_struct;
             } else {
-                // ERROR
-                return null;
+                return error.MissingFields;
             }
         }
 
