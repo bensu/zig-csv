@@ -111,7 +111,7 @@ pub fn benchmarkWorldCities() anyerror!void {
 const Benchmarks = enum { NFL, Population, MBTA, Trades };
 
 pub fn benchmark() !void {
-    switch (Benchmarks.NFL) {
+    switch (Benchmarks.Population) {
         .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
         .Population => try benchmarkWorldCities(),
         .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),

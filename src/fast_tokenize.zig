@@ -29,16 +29,20 @@ pub const CsvTokenizer = struct {
     reader: fs.File.Reader,
     state: State = .in_row,
 
+    /// The tokenizer works by keeping two buffers: blue and green which alternate between
+    /// being the primary and backup buffer.
     is_blue_primary: bool = true,
     blue_buffer: [4096]u8 = undefined,
     green_buffer: [4096]u8 = undefined,
 
-    // how much there is in the buffer
+    /// Up to which index in the primary buffer are there file bytes to read from
     buffer_available: usize = 0,
 
-    // (field_start + field_length) < buffer.len
+    /// The field is between field_start and field_end
     field_start: usize = 0,
     field_end: usize = 0,
+
+    // (field_start + field_length) < buffer.len
 
     fn get_primary(self: *CsvTokenizer) []u8 {
         if (self.is_blue_primary) {
@@ -56,6 +60,9 @@ pub const CsvTokenizer = struct {
         }
     }
 
+    /// We copy the field bytes that we've read so far (there are field_len)
+    /// into the backup buffer and read the next chunk of the file into the backup bufer.
+    /// We now set the backup buffer as the primary buffer.
     fn swapBuffers(self: *CsvTokenizer) !u8 {
         // std.debug.print("Swaping", .{});
         var primary = self.get_primary();
@@ -94,10 +101,19 @@ pub const CsvTokenizer = struct {
         return backup[field_len];
     }
 
+    /// It starts by reading part of the file into the primary buffer.
+    /// Then, it iterates over byte in that buffer while incrementing the field_len index.
+    /// When it finds a field_end_delimiter, it slices the buffer into a field and returns it.
+    ///
+    /// At some point, we reach the end of the buffer and need to read more bytes from the file.
+    /// It is likely that we are mid-field and field_len != 0. At that point, we swapBuffers.
     fn readChar(self: *CsvTokenizer) !u8 {
         var buffer = self.get_primary();
         // std.debug.print("available start end {} {} {}\n", .{ self.buffer_available, self.field_start, self.field_end });
-        if (self.field_end == self.buffer_available) {
+
+        if (self.field_end < self.buffer_available) {
+            return buffer[self.field_end];
+        } else if (self.field_end == self.buffer_available) {
             if (self.field_start != self.field_end) {
                 return try self.swapBuffers();
             } else {
@@ -112,8 +128,6 @@ pub const CsvTokenizer = struct {
                 self.field_end = 0;
                 return buffer[0];
             }
-        } else if (self.field_end < self.buffer_available) {
-            return buffer[self.field_end];
         } else {
             unreachable;
         }
@@ -123,6 +137,8 @@ pub const CsvTokenizer = struct {
         self.field_end = self.field_end + 1;
     }
 
+    /// The memory that sliceIntoBuffer returns is only guaranteed to be valid until
+    /// the next call of readChar which might rewrite the underlying buffers
     fn sliceIntoBuffer(self: *CsvTokenizer, was_quote: bool) []const u8 {
         const start = self.field_start;
         const end = self.field_end;
@@ -135,6 +151,7 @@ pub const CsvTokenizer = struct {
         }
     }
 
+    /// The field slice is only valid until the next call of next
     pub fn next(self: *CsvTokenizer) !Token {
         switch (self.state) {
             .in_row => {},
