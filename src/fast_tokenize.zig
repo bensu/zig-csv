@@ -267,7 +267,45 @@ fn testFile(file: fs.File, expected_token_rows: [][]u8) !void {
     try std.testing.expect(eof_token == Token.eof);
 }
 
-test "tokenize" {
+test "tokenize from buffer" {
+    const file = try fs.cwd().openFile("test/data/simple_tokenize.csv", .{});
+    defer file.close();
+
+    var buffer: [42]u8 = undefined;
+    const bytes_read: usize = try file.readAll(&buffer);
+
+    try std.testing.expect(bytes_read == 42);
+
+    const BufferStream = std.io.FixedBufferStream([]u8);
+    const CsvBufferTokenizer = CsvTokenizer(BufferStream.Reader);
+
+    var fixed_in_stream: BufferStream = std.io.fixedBufferStream(&buffer);
+    const reader: BufferStream.Reader = fixed_in_stream.reader();
+
+    const expected_token_rows = [5][3][]const u8{
+        [_][]const u8{ "1", "2", "3" },
+        [_][]const u8{ "4", "5", "6" },
+        [_][]const u8{ "7", "", "9" },
+        [_][]const u8{ "10", " , , ", "12" },
+        [_][]const u8{ "13", "14", "" },
+    };
+
+    var tokenizer = CsvBufferTokenizer{ .reader = reader };
+
+    for (expected_token_rows) |expected_row| {
+        for (expected_row) |expected_token| {
+            const received_token = try tokenizer.next();
+            try std.testing.expectEqualStrings(expected_token, received_token.field);
+        }
+        const row_end_token = try tokenizer.next();
+        try std.testing.expect(row_end_token == Token.row_end);
+    }
+
+    const eof_token = try tokenizer.next();
+    try std.testing.expect(eof_token == Token.eof);
+}
+
+test "tokenize from file" {
     const file = try fs.cwd().openFile("test/data/simple_tokenize.csv", .{});
     defer file.close();
 
