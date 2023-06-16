@@ -60,9 +60,26 @@ pub const CsvTokenizer = struct {
         }
     }
 
-    /// We copy the field bytes that we've read so far (there are field_len)
-    /// into the backup buffer and read the next chunk of the file into the backup bufer.
-    /// We now set the backup buffer as the primary buffer.
+    /// Before swaping, we have many of the field bytes (f) in the primary buffer:
+    ///
+    /// primary:  [ | | | | | | | | | | | |f|f|f|f|f|f|f|f]
+    ///                                    ^             ^
+    ///                          field_start             field_end == buffer_available
+    ///
+    /// which we copy into backup:
+    ///
+    /// backup:   [f|f|f|f|f|f|f|f| | | | | | | | | | | ]
+    ///            ^             ^
+    ///  field_start             field_end
+    ///
+    /// and read the next chunk of new bytes (n) from the file into the backup bufer:
+    ///
+    ///
+    /// backup:   [f|f|f|f|f|f|f|f|n|n|n|n|n|n|n|n|n|n|n]
+    ///            ^             ^                     ^
+    ///  field_start             field_end             buffer_available
+    ///
+    /// Finally, we swap the primary and backup buffers by switching is_blue_primary
     fn swapBuffers(self: *CsvTokenizer) !u8 {
         // std.debug.print("Swaping", .{});
         var primary = self.get_primary();
@@ -137,8 +154,22 @@ pub const CsvTokenizer = struct {
         self.field_end = self.field_end + 1;
     }
 
+    /// !!!
     /// The memory that sliceIntoBuffer returns is only guaranteed to be valid until
-    /// the next call of readChar which might rewrite the underlying buffers
+    /// the next call of readChar which might rewrite the underlying buffers.
+    /// !!!
+    ///
+    /// The primary buffer has the fields we read from the file, with field_start
+    /// and field_end pointing to the start and end of the current field:
+    ///
+    /// primary:  [ | | | | | |f|f|f|f|f|f|f|f| | | | | ]
+    ///                        ^             ^
+    ///              field_start             field_end
+    ///
+    /// That is where we make the slice, which will be valid until the next call of readChar.
+    ///
+    /// slice:                [f|f|f|f|f|f|f|f]
+    ///
     fn sliceIntoBuffer(self: *CsvTokenizer, was_quote: bool) []const u8 {
         const start = self.field_start;
         const end = self.field_end;
