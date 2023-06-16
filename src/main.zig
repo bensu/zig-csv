@@ -63,25 +63,25 @@ const WorldCityPopulation = struct {
 };
 
 fn benchmark() anyerror!void {
-    const allocator = std.heap.page_allocator;
-
     const file_path = "benchmark/data/worldcitiespop.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
-    const reader = file.reader();
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
+    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    // defer arena.deinit();
+    // const allocator = arena.allocator();
 
-    var parser = try parse.CsvParser(WorldCityPopulation).init(arena.allocator(), reader, .{});
+    var buffer: [4096 * 10]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
+
+    var parser = try parse.CsvParser(WorldCityPopulation).init(allocator, file.reader(), .{});
     var population: u64 = 0;
     while (try parser.next()) |row| {
         if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
             population += (row.population orelse 0);
         }
-        // std.debug.print("Row: {}\n", .{rows});
-        // std.debug.print("{}\n", .{row});
-        // rows = rows + 1;
+        fba.reset();
     }
     std.debug.print("Number of US-MA population: {}\n", .{population});
 }
