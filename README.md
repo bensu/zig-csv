@@ -209,7 +209,7 @@ try serializer.appendRow(StructType{ ... });
 
 ### Parse from one file and serialize into another one
 
-From `src/end_to_end.zig`:
+From `src/csv/end_to_end.zig`:
 
 ```zig
 const T = struct { id: i64, age: u32 };
@@ -244,7 +244,7 @@ std.debug.print("Wrote {} rows", .{rows});
 
 ### Parse into a pre-allocated Array
 
-From `src/parse.zig`:
+From `src/csv/parse.zig`:
 
 ```zig
 const T = struct { id: i64, age: u32 };
@@ -273,7 +273,7 @@ while (i < expected_rows) {
 
 ### Parse into a pre-allocated ArrayList
 
-From `src/parse.zig`:
+From `src/csv/parse.zig`:
 
 ```zig
 const T = struct { id: i64, age: u32 };
@@ -347,7 +347,7 @@ std.debug.print("You captured {} Pikachus", .{pikachus_captured});
 
 ### Parse and serialize directly from buffers
 
-From `src/end_to_end_test.zig`:
+From `src/csv/end_to_end_test.zig`:
 
 ```zig
 test "buffer end to end" {
