@@ -91,19 +91,18 @@ pub inline fn parseAtomic(
 // csv_reader.nextRow() -> ?T
 // if ?T is null, we are done
 
-pub const InitUserError = error{
-    OutOfMemory,
-    BadInput,
-};
-
-pub const NextUserError = error{
+const InternalParseError = error{
+    // Should these be named CSV_ as to not pollute the overall error set?
     BadInput,
     MissingFields,
     ExtraFields,
     OutOfMemory,
 };
 
-// Errors from csv.zig:
+// put this under CsvParser
+pub const CsvParseError = tokenize.TokenizeError || InternalParseError;
+
+// Errors from reading a File:
 
 // 'error.MisplacedQuote' not a member of destination error set
 // 'error.NoSeparatorAfterField' not a member of destination error set
@@ -145,10 +144,7 @@ pub fn CsvParser(
         pub fn init(
             allocator: std.mem.Allocator,
             reader: Reader,
-        ) InitUserError!Self {
-            // TODO: give user a way to describe what the longest field might be
-
-            // var field_buffer = try allocator.alloc(u8, 4096);
+        ) CsvParseError!Self {
             var tokenizer = Tokenizer{ .reader = reader };
 
             var self = Self{
@@ -166,7 +162,7 @@ pub fn CsvParser(
 
         /// Try to read a row and return a parsed T out of it if possible
         /// Returns null if the iterator is done
-        pub fn next(self: *Self) NextUserError!?T {
+        pub fn next(self: *Self) CsvParseError!?T {
             // TODO: Who should be managing draft_struct's memory?
             var draft_struct: T = undefined;
             const maybe = try self.nextInto(&draft_struct);
@@ -178,12 +174,10 @@ pub fn CsvParser(
         }
 
         // Try to read a row into draft_struct and re-return it it if possible
-        pub fn nextInto(self: *Self, draft_struct: *T) NextUserError!?*T {
+        pub fn nextInto(self: *Self, draft_struct: *T) CsvParseError!?*T {
             var fields_added: u32 = 0;
             inline for (Fields) |F| {
-                const token = self.tokenizer.next() catch {
-                    return error.BadInput;
-                };
+                const token = try self.tokenizer.next();
                 // tokenize.debugToken(token);
                 switch (token) {
                     .row_end => return error.MissingFields,
@@ -197,18 +191,6 @@ pub fn CsvParser(
                         switch (FieldInfo) {
                             .Void => {
                                 @field(draft_struct, F.name) = {};
-                            },
-                            .Array => |info| {
-                                if (comptime info.child != u8) {
-                                    @compileError("Arrays can only be u8 and '" ++ F.name ++ "'' is " ++ @typeName(info.child));
-                                }
-
-                                // TODO: should we drop bytes or should we throw an error?
-                                if (info.len < field.len) {
-                                    return error.BadInput;
-                                }
-
-                                std.mem.copy(u8, &@field(draft_struct, F.name), field);
                             },
                             .Pointer => |info| {
                                 switch (info.size) {
@@ -262,16 +244,14 @@ pub fn CsvParser(
             }
 
             // consume the row_end
-            const token = self.tokenizer.next() catch {
-                return error.BadInput;
-            };
+            const token = try self.tokenizer.next();
+
             switch (token) {
                 .field => {
                     if (token.field.len > 0) {
                         std.debug.print("Extra fields {s}\n", .{token.field});
                         return error.ExtraFields;
                     }
-                    // we accept an extra comma at the end
                 },
                 .row_end => {},
                 .eof => {},
@@ -286,16 +266,12 @@ pub fn CsvParser(
         }
 
         fn consume_row(self: *Self) !void {
-            var token = self.tokenizer.next() catch {
-                return error.BadInput;
-            };
+            var token = try self.tokenizer.next();
             var continue_loop = true;
             while (continue_loop) {
                 switch (token) {
                     .field => {
-                        token = self.tokenizer.next() catch {
-                            return error.BadInput;
-                        };
+                        token = try self.tokenizer.next();
                         continue;
                     },
                     .row_end, .eof => {

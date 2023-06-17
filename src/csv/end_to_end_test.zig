@@ -1,7 +1,9 @@
 const std = @import("std");
 const fs = std.fs;
-const csv = @import("../csv.zig");
 
+const cnf = @import("config.zig");
+const serialize = @import("serialize.zig");
+const parse = @import("parse.zig");
 const utils = @import("utils.zig");
 
 const Simple = struct {
@@ -23,9 +25,9 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(arena.allocator(), reader);
+    var parser = try parse.CsvParser(T, fs.File.Reader, .{}).init(arena.allocator(), reader);
 
-    var serializer = csv.CsvSerializer(T, fs.File.Writer, .{}).init(writer);
+    var serializer = serialize.CsvSerializer(T, fs.File.Writer, .{}).init(writer);
 
     var rows: usize = 0;
     try serializer.writeHeader();
@@ -74,8 +76,8 @@ test "parsing pokemon" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const config: csv.CsvConfig = .{};
-    const PokemonCsvParser = csv.CsvParser(Pokemon, fs.File.Reader, config);
+    const config: cnf.CsvConfig = .{};
+    const PokemonCsvParser = parse.CsvParser(Pokemon, fs.File.Reader, config);
 
     var parser = try PokemonCsvParser.init(arena.allocator(), reader);
 
@@ -98,8 +100,8 @@ test "serializing pokemon" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const config: csv.CsvConfig = .{};
-    const PokemonCsvSerializer = csv.CsvSerializer(Pokemon, fs.File.Writer, config);
+    const config: cnf.CsvConfig = .{};
+    const PokemonCsvSerializer = serialize.CsvSerializer(Pokemon, fs.File.Writer, config);
     var serializer = PokemonCsvSerializer.init(writer);
 
     const pokemons = [3]Pokemon{
@@ -149,7 +151,7 @@ test "buffer end to end" {
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
-    var parser = try csv.CsvParser(T, @TypeOf(reader), .{}).init(arena_allocator, reader);
+    var parser = try parse.CsvParser(T, @TypeOf(reader), .{}).init(arena_allocator, reader);
 
     var i: usize = 0;
     while (try parser.next()) |row| {
@@ -162,7 +164,7 @@ test "buffer end to end" {
     var fixed_buffer_stream = std.io.fixedBufferStream(buffer[0..]);
     const writer = fixed_buffer_stream.writer();
 
-    var serializer = csv.CsvSerializer(T, @TypeOf(writer), .{}).init(writer);
+    var serializer = serialize.CsvSerializer(T, @TypeOf(writer), .{}).init(writer);
 
     try serializer.writeHeader();
     for (parsed_rows) |row| {
@@ -189,7 +191,7 @@ test "fixed buffer allocator" {
     var buffer: [4096]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
 
-    const PokemonCsvParser = csv.CsvParser(NamelessPokemon, fs.File.Reader, .{});
+    const PokemonCsvParser = parse.CsvParser(NamelessPokemon, fs.File.Reader, .{});
 
     var parser = try PokemonCsvParser.init(fba.allocator(), reader);
 

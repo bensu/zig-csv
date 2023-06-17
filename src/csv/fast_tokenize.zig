@@ -18,6 +18,26 @@ fn debugToken(token: Token) void {
     }
 }
 
+pub const ReaderError = error{
+    AccessDenied,
+    BrokenPipe,
+    ConnectionResetByPeer,
+    ConnectionTimedOut,
+    InputOutput,
+    IsDir,
+    NotOpenForReading,
+    OperationAborted,
+    SystemResources,
+    Unexpected,
+    WouldBlock,
+};
+
+const InternalError = error{ EndOfStream, OutOfMemory };
+
+pub const TokenizeSpecificError = error{OutOfMemory};
+
+pub const TokenizeError = TokenizeSpecificError || ReaderError || error{EndOfStream};
+
 pub fn CsvTokenizer(
     comptime Reader: type,
     comptime config: cnf.CsvConfig,
@@ -79,7 +99,7 @@ pub fn CsvTokenizer(
         ///  field_start             field_end             buffer_available
         ///
         /// Finally, we swap the primary and backup buffers by switching is_blue_primary
-        fn swapBuffers(self: *Self) !u8 {
+        fn swapBuffers(self: *Self) (InternalError || ReaderError)!u8 {
             // std.debug.print("Swaping", .{});
             var primary = self.get_primary();
             var backup = self.get_backup();
@@ -106,6 +126,7 @@ pub fn CsvTokenizer(
             self.buffer_available = field_len;
             self.is_blue_primary = !self.is_blue_primary;
 
+            // TODO: what errors can this return?
             const bytes_read = try self.reader.read(backup[field_len..]);
 
             self.buffer_available = self.buffer_available + bytes_read;
@@ -123,7 +144,7 @@ pub fn CsvTokenizer(
         ///
         /// At some point, we reach the end of the buffer and need to read more bytes from the file.
         /// It is likely that we are mid-field and field_len != 0. At that point, we swapBuffers.
-        fn readChar(self: *Self) !u8 {
+        fn readChar(self: *Self) (InternalError || ReaderError)!u8 {
             var buffer = self.get_primary();
             // std.debug.print("available start end {} {} {}\n", .{ self.buffer_available, self.field_start, self.field_end });
 
@@ -182,7 +203,7 @@ pub fn CsvTokenizer(
         }
 
         /// The field slice is only valid until the next call of next
-        pub fn next(self: *Self) !Token {
+        pub fn next(self: *Self) TokenizeError!Token {
             switch (self.state) {
                 .in_row => {},
                 .row_end => {
@@ -198,16 +219,16 @@ pub fn CsvTokenizer(
             var was_quote = false;
             var in_quote = false;
             while (true) {
-                const byte = self.readChar() catch |err| {
-                    // std.debug.print("error in next {}", .{err});
-                    switch (err) {
-                        error.EndOfStream => {
-                            self.state = .eof;
-                            return Token.eof;
-                        },
-                        else => return err,
-                    }
-                };
+                var byte: u8 = undefined;
+                if (self.readChar()) |b| {
+                    byte = b;
+                } else |err| switch (err) {
+                    error.EndOfStream => {
+                        self.state = .eof;
+                        return Token.eof;
+                    },
+                    else => return err, // this can't be EndOfStream
+                }
 
                 if (in_quote and byte != config.quote_delimiter) {
                     self.addToField();
