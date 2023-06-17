@@ -113,3 +113,102 @@ test "serializing pokemon" {
 ```
 
 `tmp/pokemon.csv` should now have the same contents as the CSV above, header included.
+
+## API Reference
+
+TODO: document errors
+
+```zig
+// Type declarations:
+
+pub const CsvConfig = struct {
+    field_end_delimiter: u8 = ',',
+    row_end_delimiter: u8 = '\n',
+    quote_delimiter: u8 = '"',
+    skip_first_row: bool = true,
+};
+
+pub fn CsvSerializer(
+    comptime T: type,
+    comptime config: cnf.CsvConfig,
+) type {
+    return struct {
+        fn init(writer: Writer) CsvSerializer {}
+
+        fn writeHeader() !void {}
+
+        fn appendRow(data: T) !void {}
+    }
+}
+
+pub fn CsvParser(
+    comptime Reader: type,
+    comptime T: type,
+    comptime config: cnf.CsvConfig,
+) type {
+    return struct {
+        fn init(
+            allocator: std.mem.Allocator,
+            reader: Reader,
+        ) CsvSerializer {}
+
+
+        // Returns the next row T or null if the iterator is done
+        fn next() NextUserError!?T {}
+
+        // Like new() but writes the struct into the provider pointer
+        fn nextInto(struct_pointer: *T) NextUserError!?*T {}
+    }
+}
+
+pub fn CsvSerializer(
+    comptime T: type,
+    comptime config: cnf.CsvConfig,
+) type {
+    return struct {
+        fn init(writer: Writer) CsvSerializer {}
+
+        fn writeHeader() !void {}
+
+        fn appendRow(data: T) !void {}
+    }
+}
+
+// Usage:
+
+const config: csv.CsvConfig = {
+    .field_end_delimiter = ',',
+    .row_end_delimiter = '\n',
+    .quote_delimiter = '"',
+    .skip_first_row = true,
+};
+
+const StructType = struct {
+    int_field:   u32,
+    float_field: f64,
+    str_field:   []const u8,
+    enum_field:  enum { red, blue, yellow },
+    union_field: union { int_case: i32, float_case: f32 },
+    bool_field:  bool,
+    maybe_field: ?f64,
+    void_field:  void,  // Use to skip parsing certain columns
+}
+
+var parser = csv.CsvParser(StructType, fs.File.Reader, config).init(reader);
+
+var total: u32 = 0;
+while (try parser.next()) |row| {
+    // do something with the row
+    if (std.mem.eql(u8, "important", row.str_field)) {
+        total += row.int_field;
+    }
+}
+ 
+var serializer = csv.CsvSerializer(StructType, config).init(writer);
+
+try serializer.writeHeader();
+try serializer.appendRow(StructType{ ... });
+try serializer.appendRow(StructType{ ... });
+// ...
+
+```
