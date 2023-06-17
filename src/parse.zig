@@ -121,8 +121,8 @@ pub const NextUserError = error{
 // 'error.WouldBlock' not a member of destination error set
 
 pub fn CsvParser(
-    comptime Reader: type,
     comptime T: type,
+    comptime Reader: type,
     comptime config: cnf.CsvConfig,
 ) type {
     return struct {
@@ -402,7 +402,7 @@ test "parse" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(fs.File.Reader, SimpleParse, .{}).init(arena.allocator(), file.reader());
+    var parser = try CsvParser(SimpleParse, fs.File.Reader, .{}).init(arena.allocator(), file.reader());
 
     const maybe_first_row = try parser.next();
 
@@ -475,7 +475,7 @@ test "parse mutable slices" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(fs.File.Reader, SliceParse, .{}).init(arena.allocator(), file.reader());
+    var parser = try CsvParser(SliceParse, fs.File.Reader, .{}).init(arena.allocator(), file.reader());
 
     const maybe_first_row = try parser.next();
     const maybe_second_row = try parser.next();
@@ -521,7 +521,7 @@ test "parse into previously allocated structs" {
 
     const tight_array: []TightStruct = try arena_allocator.alloc(TightStruct, 17);
 
-    var parser = try CsvParser(fs.File.Reader, TightStruct, .{}).init(arena_allocator, file.reader());
+    var parser = try CsvParser(TightStruct, fs.File.Reader, .{}).init(arena_allocator, file.reader());
 
     const maybe_first_row = try parser.nextInto(&tight_array[0]);
     const maybe_second_row = try parser.nextInto(&tight_array[1]);
@@ -568,7 +568,7 @@ test "parse into arraylist!!! " {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(fs.File.Reader, TightStruct, .{}).init(arena.allocator(), file.reader());
+    var parser = try CsvParser(TightStruct, fs.File.Reader, .{}).init(arena.allocator(), file.reader());
 
     // We can use parser.nextInto with list.addOne
     {
@@ -633,7 +633,7 @@ test "parse enums" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(fs.File.Reader, EnumParse, .{}).init(arena.allocator(), file.reader());
+    var parser = try CsvParser(EnumParse, fs.File.Reader, .{}).init(arena.allocator(), file.reader());
 
     const maybe_first_row = try parser.next();
 
@@ -713,7 +713,7 @@ test "parse unions" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try CsvParser(fs.File.Reader, UnionStruct, .{}).init(arena.allocator(), file.reader());
+    var parser = try CsvParser(UnionStruct, fs.File.Reader, .{}).init(arena.allocator(), file.reader());
 
     const maybe_first_row = try parser.next();
 

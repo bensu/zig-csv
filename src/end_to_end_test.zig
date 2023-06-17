@@ -23,7 +23,7 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try csv.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
+    var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(arena.allocator(), reader);
 
     var serializer = csv.CsvSerializer(T, fs.File.Writer, .{}).init(writer);
 
@@ -75,7 +75,7 @@ test "parsing pokemon" {
     defer arena.deinit();
 
     const config: csv.CsvConfig = .{};
-    const PokemonCsvParser = csv.CsvParser(fs.File.Reader, Pokemon, config);
+    const PokemonCsvParser = csv.CsvParser(Pokemon, fs.File.Reader, config);
 
     var parser = try PokemonCsvParser.init(arena.allocator(), reader);
 

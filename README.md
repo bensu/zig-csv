@@ -46,7 +46,7 @@ test "parsing pokemon" {
 
     const config: csv.CsvConfig = .{};  // default config:
 
-    const PokemonCsvParser = csv.CsvParser(fs.File.Reader, Pokemon, config);
+    const PokemonCsvParser = csv.CsvParser(Pokemon, fs.File.Reader, config);
 
     var parser = try PokemonCsvParser.init(arena.allocator(), reader);
 
@@ -143,8 +143,8 @@ pub fn CsvSerializer(
 }
 
 pub fn CsvParser(
-    comptime Reader: type,
     comptime T: type,
+    comptime Reader: type,
     comptime config: cnf.CsvConfig,
 ) type {
     return struct {
