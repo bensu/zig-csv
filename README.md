@@ -1,6 +1,8 @@
 # zig-csv
 
-Parses CSV into zig structs, trying to balance speed with ergonomics.
+Parses CSV into structs that you define.
+
+> **Disclaimer**: I haven't used this in production and I don't know how it would fare there. I made this to learn zig.
 
 ## Quickstart
 
@@ -15,7 +17,7 @@ id,name,captured,color,health,
 3,pikachu,true,yellow,10.0,
 ```
 
-You can define a struct that describes the expected contents of the file and parses it:
+You can define a struct that describes what you expect to find in it and parses it:
 
 ```zig
 const std = @import("std");
@@ -44,7 +46,7 @@ test "parsing pokemon" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const config: csv.CsvConfig = .{};  // default config:
+    const config: csv.CsvConfig = .{}; // use the default config
 
     const PokemonCsvParser = csv.CsvParser(Pokemon, fs.File.Reader, config);
 
@@ -64,7 +66,7 @@ test "parsing pokemon" {
 
 ### Serialize
 
-Now, instead of parsing the file above, we are going to serialize it:
+Now, instead of parsing the file, we are going to serialize it from in-memory data:
 
 ```zig
 test "serializing pokemon" {
@@ -119,8 +121,6 @@ test "serializing pokemon" {
 TODO: document errors
 
 ```zig
-// Type declarations:
-
 pub const CsvConfig = struct {
     field_end_delimiter: u8 = ',',
     row_end_delimiter: u8 = '\n',
@@ -128,26 +128,14 @@ pub const CsvConfig = struct {
     skip_first_row: bool = true,
 };
 
-pub fn CsvSerializer(
-    comptime T: type,
-    comptime Writer: type,
-    comptime config: cnf.CsvConfig,
-) type {
-    return struct {
-        fn init(writer: Writer) CsvSerializer {}
-
-        fn writeHeader() !void {}
-
-        fn appendRow(data: T) !void {}
-    }
-}
-
 pub fn CsvParser(
     comptime T: type,
     comptime Reader: type,
     comptime config: cnf.CsvConfig,
 ) type {
     return struct {
+
+        // Create one CsvParser, valid for one pass over the Reader
         fn init(
             allocator: std.mem.Allocator,
             reader: Reader,
@@ -157,7 +145,7 @@ pub fn CsvParser(
         // Returns the next row T or null if the iterator is done
         fn next() NextUserError!?T {}
 
-        // Like new() but writes the struct into the provider pointer
+        // Like next() but writes the struct into the provider pointer
         fn nextInto(struct_pointer: *T) NextUserError!?*T {}
     }
 }
@@ -175,9 +163,11 @@ pub fn CsvSerializer(
         fn appendRow(data: T) !void {}
     }
 }
+```
 
-// Usage:
+Example usage:
 
+```zig
 const config: csv.CsvConfig = {
     .field_end_delimiter = ',',
     .row_end_delimiter = '\n',
@@ -205,7 +195,7 @@ while (try parser.next()) |row| {
         total += row.int_field;
     }
 }
- 
+
 var serializer = csv.CsvSerializer(StructType, config).init(writer);
 
 try serializer.writeHeader();
@@ -219,9 +209,9 @@ try serializer.appendRow(StructType{ ... });
 
 ### Parse from one file and serialize into another one
 
-```zig
-// Find the running example in src/end_to_end.zig
+From `src/end_to_end.zig`:
 
+```zig
 const T = struct { id: i64, age: u32 };
 
 const from_path = "data/from_file.csv";
@@ -254,6 +244,8 @@ std.debug.print("Wrote {} rows", .{rows});
 
 ### Parse into a pre-allocated Array
 
+From `src/parse.zig`:
+
 ```zig
 const T = struct { id: i64, age: u32 };
 
@@ -280,6 +272,8 @@ while (i < expected_rows) {
 ```
 
 ### Parse into a pre-allocated ArrayList
+
+From `src/parse.zig`:
 
 ```zig
 const T = struct { id: i64, age: u32 };
@@ -342,8 +336,8 @@ while (try parser.next()) |pokemon| {
         pikachus_captured += 1;
     }
 
-    // 2. We already used the allocated strings (pokemon.name) so we can reset 
-    //    the memory. If we didn't, we would get an OutOfMemory error when the 
+    // 2. We already used the allocated strings (pokemon.name) so we can reset
+    //    the memory. If we didn't, we would get an OutOfMemory error when the
     //    FixedBufferAllocator runs out of memory
     fba.reset();
 }
@@ -398,11 +392,9 @@ test "buffer end to end" {
 
 # Informal benchmarks
 
-In my M1, this library can run the following code over a 150Mb CSV file in 0.33 seconds:
+In my M1, this library can run the following code in `src/bench.zig` over a 150Mb CSV file in 0.33 seconds:
 
 ```zig
-// from src/bench.zig
-
 const Population = struct {
     country: []const u8,
     city: void,
