@@ -25,7 +25,7 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
 
     var parser = try csv.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
 
-    var serializer = csv.CsvSerializer(T, .{}).init(writer);
+    var serializer = csv.CsvSerializer(T, fs.File.Writer, .{}).init(writer);
 
     var rows: usize = 0;
     try serializer.writeHeader();
@@ -99,7 +99,7 @@ test "serializing pokemon" {
     defer arena.deinit();
 
     const config: csv.CsvConfig = .{};
-    const PokemonCsvSerializer = csv.CsvSerializer(Pokemon, config);
+    const PokemonCsvSerializer = csv.CsvSerializer(Pokemon, fs.File.Writer, config);
     var serializer = PokemonCsvSerializer.init(writer);
 
     const pokemons = [3]Pokemon{

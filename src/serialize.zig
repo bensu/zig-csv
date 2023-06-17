@@ -9,7 +9,12 @@ const utils = @import("utils.zig");
 // Utils
 
 // TODO: generalize to all atomic types
-fn serializeAtomic(comptime T: type, writer: fs.File.Writer, value: T) !void {
+fn serializeAtomic(
+    comptime T: type,
+    comptime Writer: type,
+    writer: Writer,
+    value: T,
+) !void {
     switch (@typeInfo(T)) {
         .Int => {
             var buffer: [20]u8 = undefined;
@@ -49,12 +54,13 @@ fn serializeAtomic(comptime T: type, writer: fs.File.Writer, value: T) !void {
 // 1. What is the API
 
 // var writer = new StreamWriter("file.csv");
-// var csv_serializer = CsvSerializer(DynStruct).init(csv_config, writer);
+// var csv_serializer = CsvSerializer(DynStruct, Writer).init(csv_config, writer);
 // const data: DynStruct = undefined;
 // csv_serializer.appendRow(data);
 
 pub fn CsvSerializer(
     comptime T: type,
+    comptime Writer: type,
     comptime config: cnf.CsvConfig,
 ) type {
     return struct {
@@ -67,9 +73,9 @@ pub fn CsvSerializer(
 
         const NumberOfFields: usize = Fields.len;
 
-        writer: fs.File.Writer,
+        writer: Writer,
 
-        pub fn init(writer: fs.File.Writer) Self {
+        pub fn init(writer: Writer) Self {
             return Self{ .writer = writer };
         }
 
@@ -109,18 +115,18 @@ pub fn CsvSerializer(
                     },
                     .Optional => |Optional| {
                         if (field_val) |v| {
-                            try serializeAtomic(Optional.child, self.writer, v);
+                            try serializeAtomic(Optional.child, Writer, self.writer, v);
                         }
                     },
                     .Union => |U| {
                         inline for (U.fields) |UF| {
                             if (std.meta.isTag(field_val, UF.name)) {
-                                try serializeAtomic(UF.field_type, self.writer, @field(field_val, UF.name));
+                                try serializeAtomic(UF.field_type, Writer, self.writer, @field(field_val, UF.name));
                             }
                         }
                     },
                     else => {
-                        try serializeAtomic(F.field_type, self.writer, field_val);
+                        try serializeAtomic(F.field_type, Writer, self.writer, field_val);
                     },
                 }
                 try self.writer.writeByte(config.field_end_delimiter);
@@ -152,7 +158,7 @@ test "serialize unions" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var serializer = CsvSerializer(UnionStruct, .{}).init(file.writer());
+    var serializer = CsvSerializer(UnionStruct, fs.File.Writer, .{}).init(file.writer());
 
     try serializer.writeHeader();
     try serializer.appendRow(UnionStruct{
