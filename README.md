@@ -304,6 +304,53 @@ while (try parser.next()) |row| {
 }
 ```
 
+### Performance: skip fields and re-use strings
+
+To improve performance, you can:
+
+1. Assign `void` to the fields that you don't need and the parser will skip them.
+2. Re-use the same memory for the strings of every row, provided you don't need to keep those strings after you processed them.
+
+```zig
+// 1. We mark void every field we don't need, maintaining their order
+
+const NamelessPokemon = struct {
+    id: void,
+    name: []const u8,
+    captured: bool,
+    color: void,
+    health: void,
+};
+
+var file = try fs.cwd().openFile("test/data/pokemon_example.csv", .{});
+defer file.close();
+const reader = file.reader();
+
+// 2. We will keep the strings of one row at a time in this buffer
+var buffer: [4096]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&buffer);
+
+const PokemonCsvParser = csv.CsvParser(NamelessPokemon, fs.File.Reader, .{});
+
+var parser = try PokemonCsvParser.init(fba.allocator(), reader);
+
+var pikachus_captured: u32 = 0;
+while (try parser.next()) |pokemon| {
+
+    // 1. We only use pokemon.captured and pokemon.name, everything else is void
+    if (pokemon.captured and std.mem.eql(u8, "pikachu", pokemon.name)) {
+        pikachus_captured += 1;
+    }
+
+    // 2. We already used the allocated strings (pokemon.name) so we can reset 
+    //    the memory. If we didn't, we would get an OutOfMemory error when the 
+    //    FixedBufferAllocator runs out of memory
+    fba.reset();
+}
+
+std.debug.print("You captured {} Pikachus", .{pikachus_captured});
+```
+
 ### Parse and serialize directly from buffers
 
 From `src/end_to_end_test.zig`:
