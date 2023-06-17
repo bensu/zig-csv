@@ -26,7 +26,7 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
 
     var parser = try parse.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
 
-    var serializer = serialize.CsvSerializer(T).init(.{}, writer);
+    var serializer = serialize.CsvSerializer(T, .{}).init(writer);
 
     var rows: usize = 0;
     try serializer.writeHeader();

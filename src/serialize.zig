@@ -3,6 +3,7 @@ const fs = std.fs;
 const Type = std.builtin.Type;
 const ascii = std.ascii;
 
+const cnf = @import("config.zig");
 const utils = @import("utils.zig");
 
 // Utils
@@ -52,12 +53,9 @@ fn serializeAtomic(comptime T: type, writer: fs.File.Writer, value: T) !void {
 // const data: DynStruct = undefined;
 // csv_serializer.appendRow(data);
 
-pub const CsvConfig = struct {
-    skip_first_row: bool = true,
-};
-
 pub fn CsvSerializer(
     comptime T: type,
+    comptime config: cnf.CsvConfig,
 ) type {
     return struct {
         const Self = @This();
@@ -70,21 +68,17 @@ pub fn CsvSerializer(
         const NumberOfFields: usize = Fields.len;
 
         writer: fs.File.Writer,
-        config: CsvConfig,
 
-        pub fn init(config: CsvConfig, writer: fs.File.Writer) Self {
-            return Self{
-                .writer = writer,
-                .config = config,
-            };
+        pub fn init(writer: fs.File.Writer) Self {
+            return Self{ .writer = writer };
         }
 
         pub fn writeHeader(self: *Self) !void {
             inline for (Fields) |Field| {
                 try self.writer.writeAll(Field.name);
-                try self.writer.writeByte(',');
+                try self.writer.writeByte(config.field_end_delimiter);
             }
-            try self.writer.writeByte('\n');
+            try self.writer.writeByte(config.row_end_delimiter);
         }
 
         pub fn appendRow(self: *Self, data: T) !void {
@@ -129,9 +123,9 @@ pub fn CsvSerializer(
                         try serializeAtomic(F.field_type, self.writer, field_val);
                     },
                 }
-                try self.writer.writeByte(',');
+                try self.writer.writeByte(config.field_end_delimiter);
             }
-            try self.writer.writeByte('\n');
+            try self.writer.writeByte(config.row_end_delimiter);
         }
     };
 }
@@ -158,7 +152,7 @@ test "serialize unions" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var serializer = CsvSerializer(UnionStruct).init(.{}, file.writer());
+    var serializer = CsvSerializer(UnionStruct, .{}).init(file.writer());
 
     try serializer.writeHeader();
     try serializer.appendRow(UnionStruct{
