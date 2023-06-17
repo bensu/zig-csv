@@ -1,9 +1,9 @@
 const std = @import("std");
 const fs = std.fs;
 
+const csv = @import("csv.zig");
+
 const utils = @import("utils.zig");
-const serialize = @import("serialize.zig");
-const parse = @import("parse.zig");
 
 const Simple = struct {
     id: []const u8,
@@ -24,9 +24,9 @@ fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var parser = try parse.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
+    var parser = try csv.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
 
-    var serializer = serialize.CsvSerializer(T, .{}).init(writer);
+    var serializer = csv.CsvSerializer(T, .{}).init(writer);
 
     var rows: usize = 0;
     try serializer.writeHeader();
