@@ -214,3 +214,139 @@ try serializer.appendRow(StructType{ ... });
 // ...
 
 ```
+
+## Examples
+
+### Parse from one file and serialize into another one
+
+```zig
+// Find the running example in src/end_to_end.zig
+
+const T = struct { id: i64, age: u32 };
+
+const from_path = "data/from_file.csv";
+var from_file = try fs.cwd().openFile(from_path, .{});
+defer from_file.close();
+const reader = from_file.reader();
+
+const to_path = "tmp/to_file.csv";
+var to_file = try fs.cwd().createFile(to_path, .{});
+defer to_file.close();
+const writer = to_file.writer();
+
+const allocator = std.testing.allocator;
+var arena = std.heap.ArenaAllocator.init(allocator);
+defer arena.deinit();
+
+var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(arena.allocator(), reader);
+
+var serializer = csv.CsvSerializer(T, fs.File.Writer, .{}).init(writer);
+
+var rows: usize = 0;
+try serializer.writeHeader();
+while (try parser.next()) |row| {
+    rows = rows + 1;
+    try serializer.appendRow(row);
+}
+
+std.debug.print("Wrote {} rows", .{rows});
+```
+
+### Parse into a pre-allocated Array
+
+```zig
+const T = struct { id: i64, age: u32 };
+
+const file_path = "test/data/simple_end_to_end.csv";
+var file = try fs.cwd().openFile(file_path, .{});
+defer file.close();
+const reader = file.reader();
+
+var arena = std.heap.ArenaAllocator.init(allocator);
+defer arena.deinit();
+const arena_allocator = arena.allocator();
+
+// if you know how many to rows to expect you can use an Array directly
+const expected_rows = 17;
+const array: []T = try arena_allocator.alloc(T, expected_rows);
+
+var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(arena_allocator, reader);
+
+var i: usize = 0;
+while (i < expected_rows) {
+    _ = try parser.nextInto(&array[i]);
+    i += 1;
+}
+```
+
+### Parse into a pre-allocated ArrayList
+
+```zig
+const T = struct { id: i64, age: u32 };
+
+const file_path = "test/data/simple_end_to_end.csv";
+var file = try fs.cwd().openFile(file_path, .{});
+defer file.close();
+const reader = file.reader();
+
+var arena = std.heap.ArenaAllocator.init(allocator);
+defer arena.deinit();
+const arena_allocator = arena.allocator();
+
+// if you don't know how many rows to expect, you can use ArrayList
+var list = std.ArrayList(T).init(allocator);
+defer list.deinit();
+
+var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(arena_allocator, reader);
+
+while (try parser.next()) |row| {
+    try list.append(row);
+}
+```
+
+### Parse and serialize directly from buffers
+
+From `src/end_to_end_test.zig`:
+
+```zig
+test "buffer end to end" {
+    const T = struct { id: u32, name: []const u8 };
+
+    // parse
+    const source = "id,name,\n1,none,";
+    const n = source.len;
+
+    var parsed_rows: [1]T = undefined;
+
+    var buffer_stream = std.io.fixedBufferStream(source[0..n]);
+    const reader = buffer_stream.reader();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var parser = try csv.CsvParser(T, @TypeOf(reader), .{}).init(arena_allocator, reader);
+
+    var i: usize = 0;
+    while (try parser.next()) |row| {
+        parsed_rows[i] = row;
+        i += 1;
+    }
+
+    // serialize
+    var buffer: [n + 1]u8 = undefined;
+    var fixed_buffer_stream = std.io.fixedBufferStream(buffer[0..]);
+    const writer = fixed_buffer_stream.writer();
+
+    var serializer = csv.CsvSerializer(T, @TypeOf(writer), .{}).init(writer);
+
+    try serializer.writeHeader();
+    for (parsed_rows) |row| {
+        try serializer.appendRow(row);
+    }
+
+    try std.testing.expect(std.mem.eql(u8, source, buffer[0..n]));
+}
+```
+
+

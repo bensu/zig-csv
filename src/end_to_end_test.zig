@@ -132,3 +132,42 @@ test "serializing pokemon" {
         try serializer.appendRow(pokemon);
     }
 }
+
+test "buffer end to end" {
+    const T = struct { id: u32, name: []const u8 };
+
+    // parse
+    const source = "id,name,\n1,none,";
+    const n = source.len;
+
+    var parsed_rows: [1]T = undefined;
+
+    var buffer_stream = std.io.fixedBufferStream(source[0..n]);
+    const reader = buffer_stream.reader();
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
+
+    var parser = try csv.CsvParser(T, @TypeOf(reader), .{}).init(arena_allocator, reader);
+
+    var i: usize = 0;
+    while (try parser.next()) |row| {
+        parsed_rows[i] = row;
+        i += 1;
+    }
+
+    // serialize
+    var buffer: [n + 1]u8 = undefined;
+    var fixed_buffer_stream = std.io.fixedBufferStream(buffer[0..]);
+    const writer = fixed_buffer_stream.writer();
+
+    var serializer = csv.CsvSerializer(T, @TypeOf(writer), .{}).init(writer);
+
+    try serializer.writeHeader();
+    for (parsed_rows) |row| {
+        try serializer.appendRow(row);
+    }
+
+    try std.testing.expect(std.mem.eql(u8, source, buffer[0..n]));
+}

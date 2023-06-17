@@ -553,7 +553,7 @@ test "parse into previously allocated structs" {
     try testStructEql(TightStruct, expected_last_row, tight_array[16]);
 }
 
-test "parse into arraylist!!! " {
+test "parse into arraylist" {
     const TightStruct = struct { id: i64, age: u32 };
 
     var allocator = std.testing.allocator;
