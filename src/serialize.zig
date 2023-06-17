@@ -136,6 +136,21 @@ pub fn CsvSerializer(
     };
 }
 
+test "serialize to buffer" {
+    const User = struct { id: u32, name: []const u8 };
+
+    var buffer: [100]u8 = undefined;
+
+    const writer = std.io.Writer.from_buffer(buffer);
+
+    var serializer = CsvSerializer(User, fs.File.Writer, .{}).init(writer);
+
+    try serializer.writeHeader();
+    try serializer.appendRow(User{ .id = 1, .name = "none" });
+
+    try std.testing.expect(std.mem.eql(u8, "id,name,\n1,none,"));
+}
+
 test "serialize unions" {
     var allocator = std.testing.allocator;
 
