@@ -1,10 +1,6 @@
 const std = @import("std");
 const fs = std.fs;
 
-const utils = @import("utils.zig");
-const serialize = @import("serialize.zig");
-const parse = @import("parse.zig");
-
 const bench = @import("bench.zig");
 
 pub fn main() anyerror!void {

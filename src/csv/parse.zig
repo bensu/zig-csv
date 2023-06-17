@@ -4,7 +4,7 @@ const Type = std.builtin.Type;
 
 const cnf = @import("config.zig");
 const tokenize = @import("fast_tokenize.zig");
-// const tokenize = @import("tokenize.zig");
+// const tokenize = @import("csv/tokenize.zig");
 
 // ============================================================================
 // Utils

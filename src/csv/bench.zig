@@ -1,7 +1,8 @@
 const std = @import("std");
 const fs = std.fs;
 
-const csv = @import("csv.zig");
+const parse = @import("parse.zig");
+const serialize = @import("serialize.zig");
 
 const NFL = struct {
     gameid: []const u8,
@@ -84,7 +85,7 @@ pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
-    var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(allocator, file.reader());
+    var parser = try parse.CsvParser(T, fs.File.Reader, .{}).init(allocator, file.reader());
     var count: u64 = 0;
     while (try parser.next()) |_| {
         count = count + 1;
@@ -102,7 +103,7 @@ pub fn benchmarkWorldCities() anyerror!void {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
-    var parser = try csv.CsvParser(FullPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+    var parser = try parse.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
     var population: u32 = 0;
     while (try parser.next()) |row| {
         if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
