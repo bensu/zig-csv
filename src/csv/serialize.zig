@@ -8,13 +8,29 @@ const utils = @import("utils.zig");
 
 // Utils
 
+const WriterError = error{
+    AccessDenied,
+    BrokenPipe,
+    ConnectionResetByPeer,
+    DiskQuota,
+    FileTooBig,
+    InputOutput,
+    LockViolation,
+    NoSpaceLeft,
+    NotOpenForWriting,
+    OperationAborted,
+    SystemResources,
+    Unexpected,
+    WouldBlock,
+};
+
 // TODO: generalize to all atomic types
 fn serializeAtomic(
     comptime T: type,
     comptime Writer: type,
     writer: Writer,
     value: T,
-) !void {
+) WriterError!void {
     switch (@typeInfo(T)) {
         .Int => {
             var buffer: [20]u8 = undefined;
@@ -51,13 +67,6 @@ fn serializeAtomic(
     }
 }
 
-// 1. What is the API
-
-// var writer = new StreamWriter("file.csv");
-// var csv_serializer = CsvSerializer(DynStruct, Writer).init(csv_config, writer);
-// const data: DynStruct = undefined;
-// csv_serializer.appendRow(data);
-
 pub fn CsvSerializer(
     comptime T: type,
     comptime Writer: type,
@@ -79,7 +88,7 @@ pub fn CsvSerializer(
             return Self{ .writer = writer };
         }
 
-        pub fn writeHeader(self: *Self) !void {
+        pub fn writeHeader(self: *Self) WriterError!void {
             inline for (Fields) |Field| {
                 _ = try self.writer.write(Field.name);
                 _ = try self.writer.writeByte(config.field_end_delimiter);
@@ -87,7 +96,7 @@ pub fn CsvSerializer(
             _ = try self.writer.writeByte(config.row_end_delimiter);
         }
 
-        pub fn appendRow(self: *Self, data: T) !void {
+        pub fn appendRow(self: *Self, data: T) WriterError!void {
             inline for (Fields) |F| {
                 const field_val: F.field_type = @field(data, F.name);
                 switch (@typeInfo(F.field_type)) {
