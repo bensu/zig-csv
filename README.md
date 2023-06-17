@@ -6,6 +6,29 @@ Parses CSV into structs that you define.
 
 ## Quickstart
 
+## Install
+
+It is not super clear to me how people install libraries in zig but [these instructions](https://zig.news/xq/zig-build-explained-part-3-1ima) have worked for me:
+
+1. Make a `vendor` folder in your project and add `csv` as a git submodule:
+
+```sh
+$ mkdir vendor
+$ git submodule add https://github.com/bensu/csv-zig vendor/csv
+$ ls vendor/csv
+README.md	build.zig	data		src		test
+```
+
+2. Add it as a package in your `build.zig`:
+
+```zig
+    const exe = b.addExecutable("your-app", "src/main.zig");
+    exe.addPackage(.{
+        .name = "csv",
+        .source = .{ .path = "vendor/csv/src/csv.zig" },
+    });
+```
+
 ### Parse
 
 Consider the following CSV file:
