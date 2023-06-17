@@ -1,15 +1,8 @@
 const std = @import("std");
 const fs = std.fs;
+const cnf = @import("config.zig");
 
-const field_end_delimiter = ',';
-const row_end_delimiter = '\n';
-const quote_delimiter = '"';
-
-const State = enum {
-    in_row,
-    row_end,
-    eof,
-};
+const State = enum { in_row, row_end, eof };
 
 const TokenTag = enum { field, row_end, eof };
 
@@ -25,7 +18,10 @@ fn debugToken(token: Token) void {
     }
 }
 
-pub fn CsvTokenizer(comptime Reader: type) type {
+pub fn CsvTokenizer(
+    comptime Reader: type,
+    comptime config: cnf.CsvConfig,
+) type {
     return struct {
         const Self = @This();
 
@@ -213,22 +209,22 @@ pub fn CsvTokenizer(comptime Reader: type) type {
                     }
                 };
 
-                if (in_quote and byte != quote_delimiter) {
+                if (in_quote and byte != config.quote_delimiter) {
                     self.addToField();
                     continue;
                 }
 
                 switch (byte) {
-                    quote_delimiter => {
+                    config.quote_delimiter => {
                         was_quote = true;
                         in_quote = !in_quote;
                         self.addToField();
                     },
-                    field_end_delimiter => {
+                    config.field_end_delimiter => {
                         // we have to grab every byte we read so far and return it
                         return Token{ .field = self.sliceIntoBuffer(was_quote) };
                     },
-                    row_end_delimiter => {
+                    config.row_end_delimiter => {
                         if (self.field_start == self.field_end) {
                             self.field_start = self.field_start + 1;
                             self.field_end = self.field_end + 1;
@@ -247,7 +243,7 @@ pub fn CsvTokenizer(comptime Reader: type) type {
     };
 }
 
-const CsvFileTokenizer = CsvTokenizer(fs.File.Reader);
+const CsvFileTokenizer = CsvTokenizer(fs.File.Reader, .{});
 
 fn testFile(file: fs.File, expected_token_rows: [][]u8) !void {
     const reader = file.reader();
@@ -277,7 +273,7 @@ test "tokenize from buffer" {
     try std.testing.expect(bytes_read == 42);
 
     const BufferStream = std.io.FixedBufferStream([]u8);
-    const CsvBufferTokenizer = CsvTokenizer(BufferStream.Reader);
+    const CsvBufferTokenizer = CsvTokenizer(BufferStream.Reader, .{});
 
     var fixed_in_stream: BufferStream = std.io.fixedBufferStream(&buffer);
     const reader: BufferStream.Reader = fixed_in_stream.reader();
