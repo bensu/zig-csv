@@ -81,10 +81,10 @@ pub fn CsvSerializer(
 
         pub fn writeHeader(self: *Self) !void {
             inline for (Fields) |Field| {
-                try self.writer.writeAll(Field.name);
-                try self.writer.writeByte(config.field_end_delimiter);
+                _ = try self.writer.write(Field.name);
+                _ = try self.writer.writeByte(config.field_end_delimiter);
             }
-            try self.writer.writeByte(config.row_end_delimiter);
+            _ = try self.writer.writeByte(config.row_end_delimiter);
         }
 
         pub fn appendRow(self: *Self, data: T) !void {
@@ -107,7 +107,7 @@ pub fn CsvSerializer(
                                     @compileError("Slices can only be u8 and '" ++ F.name ++ "' is " ++ @typeName(info.child));
                                 }
                                 if (field_val.len != 0) {
-                                    try self.writer.writeAll(field_val);
+                                    _ = try self.writer.write(field_val);
                                 }
                             },
                             else => @compileError("Pointer not implemented yet and '" ++ F.name ++ "'' is a pointer."),
@@ -139,16 +139,19 @@ pub fn CsvSerializer(
 test "serialize to buffer" {
     const User = struct { id: u32, name: []const u8 };
 
-    var buffer: [100]u8 = undefined;
+    const expected = "id,name,\n1,none,";
+    const n = expected.len;
+    var buffer: [n + 1]u8 = undefined;
 
-    const writer = std.io.Writer.from_buffer(buffer);
+    var fixed_buffer_stream = std.io.fixedBufferStream(buffer[0..]);
+    const writer = fixed_buffer_stream.writer();
 
-    var serializer = CsvSerializer(User, fs.File.Writer, .{}).init(writer);
+    var serializer = CsvSerializer(User, @TypeOf(writer), .{}).init(writer);
 
     try serializer.writeHeader();
     try serializer.appendRow(User{ .id = 1, .name = "none" });
 
-    try std.testing.expect(std.mem.eql(u8, "id,name,\n1,none,"));
+    try std.testing.expect(std.mem.eql(u8, expected, buffer[0..n]));
 }
 
 test "serialize unions" {

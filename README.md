@@ -164,6 +164,7 @@ pub fn CsvParser(
 
 pub fn CsvSerializer(
     comptime T: type,
+    comptime Writer: type,
     comptime config: cnf.CsvConfig,
 ) type {
     return struct {
