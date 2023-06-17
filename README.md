@@ -476,3 +476,7 @@ real 0.54
 user 0.40
 sys 0.03
 ```
+
+# Acknowledgements
+
+Thank you [BurntSushi](https://github.com/BurntSushi) from doing such a great job with [rust-csv](https://github.com/BurntSushi/rust-csv). It is well-documented, well-tested, and has great benchmarks.
