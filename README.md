@@ -1,62 +1,32 @@
+# zig-csv
+
+Parses CSV into zig structs, trying to balance speed with ergonomics.
+
+## Quickstart
+
+### Parse
+
+Consider the following CSV file:
+
+```csv
+id,name,captured,color,health,
+1,squirtle,false,blue,,
+2,charmander,false,red,,
+3,pikachu,true,yellow,10.0,
+```
+
+You can define a struct that describes the expected contents of the file and parses it:
+
+```zig
 const std = @import("std");
 const fs = std.fs;
+
+// Import csv
 const csv = @import("csv.zig");
-
-const utils = @import("utils.zig");
-
-const Simple = struct {
-    id: []const u8,
-    age: []const u8,
-};
-
-fn copyCsv(comptime T: type, from_path: []const u8, to_path: []const u8) !usize {
-    var from_file = try fs.cwd().openFile(from_path, .{});
-    defer from_file.close();
-    const reader = from_file.reader();
-
-    var to_file = try fs.cwd().createFile(to_path, .{});
-    defer to_file.close();
-    const writer = to_file.writer();
-
-    const allocator = std.testing.allocator;
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    var parser = try csv.CsvParser(fs.File.Reader, T, .{}).init(arena.allocator(), reader);
-
-    var serializer = csv.CsvSerializer(T, .{}).init(writer);
-
-    var rows: usize = 0;
-    try serializer.writeHeader();
-    while (try parser.next()) |row| {
-        rows = rows + 1;
-        try serializer.appendRow(row);
-    }
-
-    return rows;
-}
-
-test "end to end" {
-    const from_path = "test/data/simple_end_to_end.csv";
-    const to_path = "tmp/simple_end_to_end.csv";
-
-    var from_file = try fs.cwd().openFile(from_path, .{});
-    defer from_file.close();
-
-    var to_file = try fs.cwd().openFile(to_path, .{});
-    defer to_file.close();
-
-    const rows = try copyCsv(Simple, from_path, to_path);
-
-    const expected_rows: usize = 17;
-    try std.testing.expectEqual(expected_rows, rows);
-
-    try std.testing.expect(try utils.eqlFileContents(from_file, to_file));
-}
 
 const Color = enum { red, blue, green, yellow };
 
+// Define the type of CSV rows as a struct
 const Pokemon = struct {
     id: u32,
     name: []const u8,
@@ -74,7 +44,8 @@ test "parsing pokemon" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const config: csv.CsvConfig = .{};
+    const config: csv.CsvConfig = .{};  // default config:
+
     const PokemonCsvParser = csv.CsvParser(fs.File.Reader, Pokemon, config);
 
     var parser = try PokemonCsvParser.init(arena.allocator(), reader);
@@ -85,10 +56,17 @@ test "parsing pokemon" {
             number_captured += 1;
         }
     }
+
     try std.testing.expectEqual(number_captured, 1);
     std.debug.print("You have captured {} Pokemons", .{number_captured});
 }
+```
 
+### Serialize
+
+Now, instead of parsing the file above, we are going to serialize it:
+
+```zig
 test "serializing pokemon" {
     var file = try fs.cwd().createFile("tmp/pokemon.csv", .{});
     defer file.close();
@@ -118,7 +96,7 @@ test "serializing pokemon" {
             .health = null,
         },
         Pokemon{
-            .id = 3,
+            .id = 1,
             .name = "pikachu",
             .captured = true,
             .color = Color.yellow,
@@ -132,3 +110,6 @@ test "serializing pokemon" {
         try serializer.appendRow(pokemon);
     }
 }
+```
+
+`tmp/pokemon.csv` should now have the same contents as the CSV above, header included.

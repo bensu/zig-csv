@@ -1,0 +1,4 @@
+id,name,captured,color,health,
+1,bulbasur,false,blue,,
+2,dinasour,false,red,,
+3,pikachu,true,yellow,10.0,
