@@ -19,12 +19,22 @@ const NFL = struct {
     season: i32,
 };
 
+const FullPopulation = struct {
+    country: []const u8,
+    city: []const u8,
+    accent_city: []const u8,
+    region: []const u8,
+    population: ?u32,
+    latitude: f64,
+    longitude: f64,
+};
+
 const Population = struct {
     country: []const u8,
     city: void,
     accent_city: void,
     region: []const u8,
-    population: ?u64,
+    population: ?u32,
     latitude: void,
     longitude: void,
 };
@@ -75,7 +85,6 @@ pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
     const allocator = fba.allocator();
 
     var parser = try csv.CsvParser(T, fs.File.Reader, .{}).init(allocator, file.reader());
-    // var population: u64 = 0;
     var count: u64 = 0;
     while (try parser.next()) |_| {
         count = count + 1;
@@ -89,16 +98,12 @@ pub fn benchmarkWorldCities() anyerror!void {
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
 
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    // const allocator = arena.allocator();
-
     var buffer: [4096 * 10]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
-    var parser = try csv.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
-    var population: u64 = 0;
+    var parser = try csv.CsvParser(FullPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+    var population: u32 = 0;
     while (try parser.next()) |row| {
         if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
             population += (row.population orelse 0);

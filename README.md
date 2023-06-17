@@ -396,4 +396,83 @@ test "buffer end to end" {
 }
 ```
 
+# Informal benchmarks
 
+In my M1, this library can run the following code over a 150Mb CSV file in 0.33 seconds:
+
+```zig
+// from src/bench.zig
+
+const Population = struct {
+    country: []const u8,
+    city: void,
+    accent_city: void,
+    region: []const u8,
+    population: ?u64,
+    latitude: void,
+    longitude: void,
+};
+
+const file_path = "benchmark/data/worldcitiespop.csv";
+var file = try fs.cwd().openFile(file_path, .{});
+defer file.close();
+
+var buffer: [4096 * 10]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&buffer);
+const allocator = fba.allocator();
+
+var parser = try csv.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
+var population: u64 = 0;
+while (try parser.next()) |row| {
+    if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
+        population += (row.population orelse 0);
+    }
+    fba.reset();
+}
+std.debug.print("Number of US-MA population: {}\n", .{population});
+```
+
+Notice that it is only reading two strings and an int from each row.
+
+You can replicate in your computer with:
+
+```sh
+$ zig build -Drelease-fast=true
+$ time zig-out/bin/csv
+
+Starting benchmark
+Number of US-MA population: 5988064
+
+real 0.33
+user 0.30
+sys 0.03
+```
+
+To parse the entire file, we change the type being parsed:
+
+```diff
++ const FullPopulation = struct {
++     country: []const u8,
++     city: []const u8,
++     accent_city: []const u8,
++     region: []const u8,
++     population: ?u32,
++     latitude: f64,
++     longitude: f64,
++ };
+
+-    var parser = try csv.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
++    var parser = try csv.CsvParser(FullPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+```
+
+```sh
+$ zig build -Drelease-fast=true
+$ time zig-out/bin/csv
+
+Starting benchmark
+Number of US-MA population: 5988064
+
+real 0.54
+user 0.40
+sys 0.03
+```
