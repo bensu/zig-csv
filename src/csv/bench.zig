@@ -166,7 +166,7 @@ pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
 const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation, CountAllPopulation };
 
 pub fn benchmark() !void {
-    if (false) {
+    if (true) {
         for (std.enums.values(Benchmarks)) |e| {
             switch (e) {
                 .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
