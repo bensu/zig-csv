@@ -433,7 +433,7 @@ test "buffer end to end" {
 
 # Informal benchmarks
 
-In my M1, this library can run the following code in `src/bench.zig` over a 150Mb CSV file in 0.33 seconds:
+In my M1, this library can run the following code in `src/csv/bench.zig` over a 150Mb CSV file in 286ms:
 
 ```zig
 const Population = struct {
@@ -470,18 +470,13 @@ Notice that it is only reading two strings and an int from each row.
 You can replicate in your computer with:
 
 ```sh
-$ zig build -Drelease-fast=true
-$ time zig-out/bin/csv
+$ zig build -Drelease-fast=true; zig-out/bin/csv
 
 Starting benchmark
-Number of US-MA population: 5988064
-
-real 0.33
-user 0.30
-sys 0.03
+Average time: 286 ms
 ```
 
-To parse the entire file, we change the type being parsed:
+To parse every column in the file, we change the type being parsed:
 
 ```diff
 + const FullPopulation = struct {
@@ -494,20 +489,15 @@ To parse the entire file, we change the type being parsed:
 +     longitude: f64,
 + };
 
--    var parser = try csv.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
-+    var parser = try csv.CsvParser(FullPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+-    const PopulationParser = parse.CsvParser(Population, fs.File.Reader, .{});
++    const PopulationParser = parse.CsvParser(FullPopulation, fs.File.Reader, .{});
 ```
 
 ```sh
-$ zig build -Drelease-fast=true
-$ time zig-out/bin/csv
+$ zig build -Drelease-fast=true; zig-out/bin/csv
 
 Starting benchmark
-Number of US-MA population: 5988064
-
-real 0.54
-user 0.40
-sys 0.03
+Average time: 403 ms
 ```
 
 I took this benchmark from the awesome [rust-csv](https://github.com/BurntSushi/rust-csv).

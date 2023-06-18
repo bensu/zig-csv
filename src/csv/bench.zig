@@ -111,7 +111,7 @@ pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
     std.debug.print("Parsed {} rows in {}ms -- {s}\n", .{ count, ms_duration, @typeName(T) });
 }
 
-pub fn benchmarkWorldCities() anyerror!void {
+pub fn benchmarkWorldCities(print: bool) anyerror!i64 {
     const file_path = "benchmark/data/worldcitiespop.csv";
     var file = try fs.cwd().openFile(file_path, .{});
     defer file.close();
@@ -120,9 +120,9 @@ pub fn benchmarkWorldCities() anyerror!void {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
-    const start_ms = std.time.milliTimestamp();
+    const PopulationParser = parse.CsvParser(FullPopulation, fs.File.Reader, .{});
 
-    const PopulationParser = parse.CsvParser(Population, fs.File.Reader, .{});
+    const start_ms = std.time.milliTimestamp();
     var parser = try PopulationParser.init(allocator, file.reader());
     var population: u32 = 0;
     while (try parser.next()) |row| {
@@ -135,7 +135,10 @@ pub fn benchmarkWorldCities() anyerror!void {
 
     const ms_duration = end_ms - start_ms;
 
-    std.debug.print("Number of US-MA population: {} in {} ms\n", .{ population, ms_duration });
+    if (print) {
+        std.debug.print("Number of US-MA population: {} in {} ms\n", .{ population, ms_duration });
+    }
+    return ms_duration;
 }
 
 pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
@@ -174,7 +177,7 @@ pub fn benchmark() !void {
         for (std.enums.values(Benchmarks)) |e| {
             switch (e) {
                 .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
-                .CountPopulation => try benchmarkWorldCities(),
+                .CountPopulation => try benchmarkWorldCities(true),
                 .CountAllPopulation => try benchmarkCountAllPopulation(true),
                 .FullPopulation => try countRows(FullPopulation, "benchmark/data/worldcitiespop.csv"),
                 .VoidPopulation => try countRows(Population, "benchmark/data/worldcitiespop.csv"),
@@ -187,7 +190,7 @@ pub fn benchmark() !void {
         var ms: i64 = 0;
         var i: u32 = 0;
         while (i < loops) {
-            ms += try benchmarkCountAllPopulation(true);
+            ms += try benchmarkWorldCities(false);
             i += 1;
         }
         std.debug.print("Average time: {} ms\n", .{@divTrunc(ms, loops)});
