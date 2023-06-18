@@ -79,11 +79,8 @@ pub fn CsvTokenizer(
         ///
         /// Finally, we swap the primary and backup buffers by switching is_blue_primary
         fn swapBuffers(self: *Self, field_len: usize) (InternalError || ReaderError)!u8 {
-            // std.debug.print("Swaping", .{});
             var primary = &self.primary_buffer;
             var backup = &self.backup_buffer;
-
-            const field_end = self.field_start + field_len;
 
             if (field_len >= backup.len) {
                 return error.OutOfMemory;
@@ -92,22 +89,24 @@ pub fn CsvTokenizer(
             std.debug.assert(field_len < backup.len);
 
             if (field_len > 0) {
+                const start = self.field_start;
+                const end = start + field_len;
+
                 // there is something to copy
                 std.mem.copy(
                     u8,
                     backup[0..field_len],
-                    primary[self.field_start..field_end],
+                    primary[start..end],
                 );
             }
 
-            self.field_start = 0;
-            // self.field_end = field_len;
-            self.buffer_available = field_len;
+            // self.buffer_available = field_len;
 
             // Can this be prefetched before mem.copy?
             const bytes_read = try self.reader.read(backup[field_len..]);
 
-            self.buffer_available = self.buffer_available + bytes_read;
+            self.field_start = 0;
+            self.buffer_available = field_len + bytes_read;
 
             if (bytes_read == 0) {
                 return error.EndOfStream;
@@ -130,11 +129,13 @@ pub fn CsvTokenizer(
             var buffer = &self.primary_buffer;
             // std.debug.print("available start end {} {} {}\n", .{ self.buffer_available, self.field_start, self.field_end });
 
-            const field_end = self.field_start + field_len;
-            if (field_end < self.buffer_available) {
-                return buffer[field_end];
-            } else if (field_end == self.buffer_available) {
-                if (self.field_start != field_end) {
+            const start = self.field_start;
+            const end = start + field_len;
+            const available = self.buffer_available;
+            if (end < available) {
+                return buffer[end];
+            } else if (end == available) {
+                if (start != end) {
                     return try self.swapBuffers(field_len);
                 } else {
                     const bytes_read = try self.reader.read(buffer);
