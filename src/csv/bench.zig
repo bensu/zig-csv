@@ -40,6 +40,16 @@ const Population = struct {
     longitude: void,
 };
 
+const OnlyPopulation = struct {
+    country: void,
+    city: void,
+    accent_city: void,
+    region: void,
+    population: ?u32,
+    latitude: void,
+    longitude: void,
+};
+
 const MBTA = struct {
     trip_id: []const u8,
     arrival_time: []const u8,
@@ -126,17 +136,56 @@ pub fn benchmarkWorldCities() anyerror!void {
     std.debug.print("Number of US-MA population: {} in {} ms\n", .{ population, ms_duration });
 }
 
-const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation };
+pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
+    const file_path = "benchmark/data/worldcitiespop.csv";
+    var file = try fs.cwd().openFile(file_path, .{});
+    defer file.close();
+
+    var buffer: [4096 * 10]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const allocator = fba.allocator();
+
+    const start_ms = std.time.milliTimestamp();
+
+    var parser = try parse.CsvParser(OnlyPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+    var population: u32 = 0;
+    while (try parser.next()) |row| {
+        population += (row.population orelse 0);
+        fba.reset();
+    }
+    const end_ms = std.time.milliTimestamp();
+
+    const ms_duration = end_ms - start_ms;
+
+    if (print) {
+        std.debug.print("Total population: {} in {} ms\n", .{ population, ms_duration });
+    }
+    return ms_duration;
+}
+
+const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation, CountAllPopulation };
 
 pub fn benchmark() !void {
-    for (std.enums.values(Benchmarks)) |e| {
-        switch (e) {
-            .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
-            .CountPopulation => try benchmarkWorldCities(),
-            .FullPopulation => try countRows(FullPopulation, "benchmark/data/worldcitiespop.csv"),
-            .VoidPopulation => try countRows(Population, "benchmark/data/worldcitiespop.csv"),
-            .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),
-            .Trades => try countRows(Trade, "benchmark/data/trade-indexes.csv"),
+    if (false) {
+        for (std.enums.values(Benchmarks)) |e| {
+            switch (e) {
+                .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
+                .CountPopulation => try benchmarkWorldCities(),
+                .CountAllPopulation => try benchmarkCountAllPopulation(true),
+                .FullPopulation => try countRows(FullPopulation, "benchmark/data/worldcitiespop.csv"),
+                .VoidPopulation => try countRows(Population, "benchmark/data/worldcitiespop.csv"),
+                .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),
+                .Trades => try countRows(Trade, "benchmark/data/trade-indexes.csv"),
+            }
         }
+    } else {
+        const loops = 10;
+        var ms: i64 = 0;
+        var i: u32 = 0;
+        while (i < loops) {
+            ms += try benchmarkCountAllPopulation(false);
+            i += 1;
+        }
+        std.debug.print("Average time: {} ms\n", .{@divTrunc(ms, loops)});
     }
 }

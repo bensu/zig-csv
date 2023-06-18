@@ -126,7 +126,7 @@ pub fn CsvTokenizer(
             self.buffer_available = field_len;
             self.is_blue_primary = !self.is_blue_primary;
 
-            // TODO: what errors can this return?
+            // Can this be prefetched before mem.copy?
             const bytes_read = try self.reader.read(backup[field_len..]);
 
             self.buffer_available = self.buffer_available + bytes_read;
