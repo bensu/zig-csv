@@ -57,9 +57,8 @@ pub fn CsvTokenizer(
 
         /// The field is between field_start and field_end
         field_start: usize = 0,
-        field_end: usize = 0,
 
-        // (field_start + field_length) < buffer.len
+        // (field_start + field_len) < buffer.len
 
         /// Before swaping, we have many of the field bytes (f) in the primary buffer:
         ///
@@ -81,12 +80,12 @@ pub fn CsvTokenizer(
         ///  field_start             field_end             buffer_available
         ///
         /// Finally, we swap the primary and backup buffers by switching is_blue_primary
-        fn swapBuffers(self: *Self) (InternalError || ReaderError)!u8 {
+        fn swapBuffers(self: *Self, field_len: usize) (InternalError || ReaderError)!u8 {
             // std.debug.print("Swaping", .{});
             var primary = &self.primary_buffer;
             var backup = &self.backup_buffer;
 
-            const field_len = self.field_end - self.field_start;
+            const field_end = self.field_start + field_len;
 
             if (field_len >= backup.len) {
                 return error.OutOfMemory;
@@ -99,12 +98,12 @@ pub fn CsvTokenizer(
                 std.mem.copy(
                     u8,
                     backup[0..field_len],
-                    primary[self.field_start..self.field_end],
+                    primary[self.field_start..field_end],
                 );
             }
 
             self.field_start = 0;
-            self.field_end = field_len;
+            // self.field_end = field_len;
             self.buffer_available = field_len;
 
             // Can this be prefetched before mem.copy?
@@ -129,15 +128,16 @@ pub fn CsvTokenizer(
         ///
         /// At some point, we reach the end of the buffer and need to read more bytes from the file.
         /// It is likely that we are mid-field and field_len != 0. At that point, we swapBuffers.
-        fn readChar(self: *Self) (InternalError || ReaderError)!u8 {
+        fn readChar(self: *Self, field_len: usize) (InternalError || ReaderError)!u8 {
             var buffer = &self.primary_buffer;
             // std.debug.print("available start end {} {} {}\n", .{ self.buffer_available, self.field_start, self.field_end });
 
-            if (self.field_end < self.buffer_available) {
-                return buffer[self.field_end];
-            } else if (self.field_end == self.buffer_available) {
-                if (self.field_start != self.field_end) {
-                    return try self.swapBuffers();
+            const field_end = self.field_start + field_len;
+            if (field_end < self.buffer_available) {
+                return buffer[field_end];
+            } else if (field_end == self.buffer_available) {
+                if (self.field_start != field_end) {
+                    return try self.swapBuffers(field_len);
                 } else {
                     const bytes_read = try self.reader.read(buffer);
 
@@ -147,16 +147,11 @@ pub fn CsvTokenizer(
                         return error.EndOfStream;
                     }
                     self.field_start = 0;
-                    self.field_end = 0;
                     return buffer[0];
                 }
             } else {
                 unreachable;
             }
-        }
-
-        fn addToField(self: *Self) void {
-            self.field_end = self.field_end + 1;
         }
 
         /// !!!
@@ -175,12 +170,11 @@ pub fn CsvTokenizer(
         ///
         /// slice:                [f|f|f|f|f|f|f|f]
         ///
-        fn sliceIntoBuffer(self: *Self, was_quote: bool) []const u8 {
+        fn sliceIntoBuffer(self: *Self, was_quote: bool, field_len: usize) []const u8 {
             var buffer = &self.primary_buffer;
             const start = self.field_start;
-            const end = self.field_end;
+            const end = start + field_len;
             self.field_start = end + 1;
-            self.field_end = end + 1;
             if (was_quote) {
                 return buffer[(start + 1)..(end - 1)];
             } else {
@@ -202,11 +196,12 @@ pub fn CsvTokenizer(
             }
             // read a character. if we hit EOF, return Token.eof
 
+            var field_len: usize = 0;
             var was_quote = false;
             var in_quote = false;
             while (true) {
                 var byte: u8 = undefined;
-                if (self.readChar()) |b| {
+                if (self.readChar(field_len)) |b| {
                     byte = b;
                 } else |err| switch (err) {
                     error.EndOfStream => {
@@ -217,7 +212,7 @@ pub fn CsvTokenizer(
                 }
 
                 if (in_quote and byte != config.quote_delimiter) {
-                    self.addToField();
+                    field_len += 1;
                     continue;
                 }
 
@@ -225,25 +220,23 @@ pub fn CsvTokenizer(
                     config.quote_delimiter => {
                         was_quote = true;
                         in_quote = !in_quote;
-                        self.addToField();
+                        field_len += 1;
                     },
                     config.field_end_delimiter => {
                         // we have to grab every byte we read so far and return it
-                        return Token{ .field = self.sliceIntoBuffer(was_quote) };
+                        return Token{ .field = self.sliceIntoBuffer(was_quote, field_len) };
                     },
                     config.row_end_delimiter => {
-                        if (self.field_start == self.field_end) {
+                        const field_end = self.field_start + field_len;
+                        if (self.field_start == field_end) {
                             self.field_start = self.field_start + 1;
-                            self.field_end = self.field_end + 1;
                             return Token.row_end;
                         } else {
                             self.state = .row_end; // we owe the next call a row_end
-                            return Token{ .field = self.sliceIntoBuffer(was_quote) };
+                            return Token{ .field = self.sliceIntoBuffer(was_quote, field_len) };
                         }
                     },
-                    else => {
-                        self.addToField();
-                    },
+                    else => field_len += 1,
                 }
             }
         }
