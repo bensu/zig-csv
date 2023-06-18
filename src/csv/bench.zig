@@ -97,7 +97,8 @@ pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
 
     const start_ms = std.time.milliTimestamp();
 
-    var parser = try parse.CsvParser(T, fs.File.Reader, .{}).init(allocator, file.reader());
+    const Parser = parse.CsvParser(T, fs.File.Reader, .{});
+    var parser = try Parser.init(allocator, file.reader());
     var count: u64 = 0;
     while (try parser.next()) |_| {
         count = count + 1;
@@ -121,7 +122,8 @@ pub fn benchmarkWorldCities() anyerror!void {
 
     const start_ms = std.time.milliTimestamp();
 
-    var parser = try parse.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
+    const PopulationParser = parse.CsvParser(Population, fs.File.Reader, .{});
+    var parser = try PopulationParser.init(allocator, file.reader());
     var population: u32 = 0;
     while (try parser.next()) |row| {
         if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
@@ -147,7 +149,9 @@ pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
 
     const start_ms = std.time.milliTimestamp();
 
-    var parser = try parse.CsvParser(OnlyPopulation, fs.File.Reader, .{}).init(allocator, file.reader());
+    const OnlyPopulationParser = parse.CsvParser(OnlyPopulation, fs.File.Reader, .{});
+
+    var parser = try OnlyPopulationParser.init(allocator, file.reader());
     var population: u32 = 0;
     while (try parser.next()) |row| {
         population += (row.population orelse 0);
@@ -166,7 +170,7 @@ pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
 const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation, CountAllPopulation };
 
 pub fn benchmark() !void {
-    if (true) {
+    if (false) {
         for (std.enums.values(Benchmarks)) |e| {
             switch (e) {
                 .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
@@ -183,7 +187,7 @@ pub fn benchmark() !void {
         var ms: i64 = 0;
         var i: u32 = 0;
         while (i < loops) {
-            ms += try benchmarkCountAllPopulation(false);
+            ms += try benchmarkCountAllPopulation(true);
             i += 1;
         }
         std.debug.print("Average time: {} ms\n", .{@divTrunc(ms, loops)});

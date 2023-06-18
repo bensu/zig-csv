@@ -1,12 +1,19 @@
 {
     "version": "0.2.0",
     "configurations": [
-
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug",
+            "name": "Debug test",
             "program": "${workspaceFolder}/zig-cache//o/ee80378e85250c282caa858432e2ec3f/test",
+            "args": ["src/main.zig"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug run",
+            "program": "${workspaceFolder}/zig-out/bin/csv",
             "args": ["src/main.zig"],
             "cwd": "${workspaceFolder}"
         }

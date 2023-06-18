@@ -48,11 +48,9 @@ pub fn CsvTokenizer(
         reader: Reader,
         state: State = .in_row,
 
-        /// The tokenizer works by keeping two buffers: blue and green which alternate between
-        /// being the primary and backup buffer.
-        is_blue_primary: bool = true,
-        blue_buffer: [4096]u8 = undefined,
-        green_buffer: [4096]u8 = undefined,
+        // we swap these everytime we read from the file system
+        primary_buffer: [4096]u8 = undefined,
+        backup_buffer: [4096]u8 = undefined,
 
         /// Up to which index in the primary buffer are there file bytes to read from
         buffer_available: usize = 0,
@@ -62,22 +60,6 @@ pub fn CsvTokenizer(
         field_end: usize = 0,
 
         // (field_start + field_length) < buffer.len
-
-        fn get_primary(self: *Self) []u8 {
-            if (self.is_blue_primary) {
-                return &self.blue_buffer;
-            } else {
-                return &self.green_buffer;
-            }
-        }
-
-        fn get_backup(self: *Self) []u8 {
-            if (self.is_blue_primary) {
-                return &self.green_buffer;
-            } else {
-                return &self.blue_buffer;
-            }
-        }
 
         /// Before swaping, we have many of the field bytes (f) in the primary buffer:
         ///
@@ -101,8 +83,8 @@ pub fn CsvTokenizer(
         /// Finally, we swap the primary and backup buffers by switching is_blue_primary
         fn swapBuffers(self: *Self) (InternalError || ReaderError)!u8 {
             // std.debug.print("Swaping", .{});
-            var primary = self.get_primary();
-            var backup = self.get_backup();
+            var primary = &self.primary_buffer;
+            var backup = &self.backup_buffer;
 
             const field_len = self.field_end - self.field_start;
 
@@ -124,7 +106,6 @@ pub fn CsvTokenizer(
             self.field_start = 0;
             self.field_end = field_len;
             self.buffer_available = field_len;
-            self.is_blue_primary = !self.is_blue_primary;
 
             // Can this be prefetched before mem.copy?
             const bytes_read = try self.reader.read(backup[field_len..]);
@@ -135,7 +116,11 @@ pub fn CsvTokenizer(
                 return error.EndOfStream;
             }
 
-            return backup[field_len];
+            var temp = self.primary_buffer;
+            self.primary_buffer = self.backup_buffer;
+            self.backup_buffer = temp;
+
+            return self.primary_buffer[field_len];
         }
 
         /// It starts by reading part of the file into the primary buffer.
@@ -145,7 +130,7 @@ pub fn CsvTokenizer(
         /// At some point, we reach the end of the buffer and need to read more bytes from the file.
         /// It is likely that we are mid-field and field_len != 0. At that point, we swapBuffers.
         fn readChar(self: *Self) (InternalError || ReaderError)!u8 {
-            var buffer = self.get_primary();
+            var buffer = &self.primary_buffer;
             // std.debug.print("available start end {} {} {}\n", .{ self.buffer_available, self.field_start, self.field_end });
 
             if (self.field_end < self.buffer_available) {
@@ -191,14 +176,15 @@ pub fn CsvTokenizer(
         /// slice:                [f|f|f|f|f|f|f|f]
         ///
         fn sliceIntoBuffer(self: *Self, was_quote: bool) []const u8 {
+            var buffer = &self.primary_buffer;
             const start = self.field_start;
             const end = self.field_end;
             self.field_start = end + 1;
             self.field_end = end + 1;
             if (was_quote) {
-                return self.get_primary()[(start + 1)..(end - 1)];
+                return buffer[(start + 1)..(end - 1)];
             } else {
-                return self.get_primary()[start..end];
+                return buffer[start..end];
             }
         }
 
