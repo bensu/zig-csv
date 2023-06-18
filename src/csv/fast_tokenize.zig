@@ -55,29 +55,27 @@ pub fn CsvTokenizer(
         /// Up to which index in the primary buffer are there file bytes to read from
         buffer_available: usize = 0,
 
-        /// The field is between field_start and field_end
+        /// The goes from field_start to field_start + field_len
         field_start: usize = 0,
-
-        // (field_start + field_len) < buffer.len
 
         /// Before swaping, we have many of the field bytes (f) in the primary buffer:
         ///
-        /// primary:  [ | | | | | | | | | | | |f|f|f|f|f|f|f|f]
-        ///                                    ^             ^
-        ///                          field_start             field_end == buffer_available
+        /// primary:  [ | | | | | | | | | | | | | | |f|f|f|f|f|f|f|f]
+        ///                                          ^             ^
+        ///                                field_start            (field_start + field_len) == buffer_available
         ///
         /// which we copy into backup:
         ///
-        /// backup:   [f|f|f|f|f|f|f|f| | | | | | | | | | | ]
+        /// backup:   [f|f|f|f|f|f|f|f| | | | | | | | | | | | | | | ]
         ///            ^             ^
-        ///  field_start             field_end
+        ///  field_start             field_start + field_len
         ///
         /// and read the next chunk of new bytes (n) from the file into the backup bufer:
         ///
         ///
-        /// backup:   [f|f|f|f|f|f|f|f|n|n|n|n|n|n|n|n|n|n|n]
-        ///            ^             ^                     ^
-        ///  field_start             field_end             buffer_available
+        /// backup:   [f|f|f|f|f|f|f|f|n|n|n|n|n|n|n|n|n|n|n|n|n|n|n]
+        ///            ^             ^                             ^
+        ///  field_start             (field_start + field_len)     buffer_available
         ///
         /// Finally, we swap the primary and backup buffers by switching is_blue_primary
         fn swapBuffers(self: *Self, field_len: usize) (InternalError || ReaderError)!u8 {
