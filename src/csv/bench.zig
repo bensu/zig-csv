@@ -85,13 +85,19 @@ pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
+    const start_ms = std.time.milliTimestamp();
+
     var parser = try parse.CsvParser(T, fs.File.Reader, .{}).init(allocator, file.reader());
     var count: u64 = 0;
     while (try parser.next()) |_| {
         count = count + 1;
         fba.reset();
     }
-    std.debug.print("Number rows: {}\n", .{count});
+    const end_ms = std.time.milliTimestamp();
+
+    const ms_duration = end_ms - start_ms;
+
+    std.debug.print("Parsed {} rows in {}ms -- {s}\n", .{ count, ms_duration, @typeName(T) });
 }
 
 pub fn benchmarkWorldCities() anyerror!void {
@@ -103,6 +109,8 @@ pub fn benchmarkWorldCities() anyerror!void {
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
+    const start_ms = std.time.milliTimestamp();
+
     var parser = try parse.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
     var population: u32 = 0;
     while (try parser.next()) |row| {
@@ -111,16 +119,24 @@ pub fn benchmarkWorldCities() anyerror!void {
         }
         fba.reset();
     }
-    std.debug.print("Number of US-MA population: {}\n", .{population});
+    const end_ms = std.time.milliTimestamp();
+
+    const ms_duration = end_ms - start_ms;
+
+    std.debug.print("Number of US-MA population: {} in {} ms\n", .{ population, ms_duration });
 }
 
-const Benchmarks = enum { NFL, Population, MBTA, Trades };
+const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation };
 
 pub fn benchmark() !void {
-    switch (Benchmarks.Population) {
-        .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
-        .Population => try benchmarkWorldCities(),
-        .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),
-        .Trades => try countRows(Trade, "benchmark/data/trade-indexes.csv"),
+    for (std.enums.values(Benchmarks)) |e| {
+        switch (e) {
+            .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
+            .CountPopulation => try benchmarkWorldCities(),
+            .FullPopulation => try countRows(FullPopulation, "benchmark/data/worldcitiespop.csv"),
+            .VoidPopulation => try countRows(Population, "benchmark/data/worldcitiespop.csv"),
+            .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),
+            .Trades => try countRows(Trade, "benchmark/data/trade-indexes.csv"),
+        }
     }
 }
