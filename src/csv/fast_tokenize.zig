@@ -91,13 +91,7 @@ pub fn CsvTokenizer(
             if (field_len > 0) {
                 const start = self.field_start;
                 const end = start + field_len;
-
-                // there is something to copy
-                std.mem.copy(
-                    u8,
-                    backup[0..field_len],
-                    primary[start..end],
-                );
+                std.mem.copy(u8, backup[0..field_len], primary[start..end]);
             }
 
             // self.buffer_available = field_len;
