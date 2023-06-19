@@ -1,4 +1,4 @@
 zig-cache/
 zig-out/
 tmp/
-benchmark/
+.DS_Store

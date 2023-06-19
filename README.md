@@ -434,6 +434,12 @@ test "buffer end to end" {
 In my M1, this library can run over a 144Mb CSV file in 418ms if it parses every column and 301ms if it only extracts a few fields:
 
 ```sh
+$ # get the benchmark data
+$ git submodule update --remote benchmark
+$ cd benchmark
+$ bash unzip_data.bash
+$ cd ..
+$ # run the benchmark
 $ zig build -Drelease-fast=true; zig-out/bin/csv
 
 Starting benchmark
@@ -453,9 +459,6 @@ I took these benchmark files from these great projects:
 - [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser)
 - [java/csv-benchmark](https://github.com/skjolber/csv-benchmark)
 
-Thank you to these author's for compiling the benchmarks.
-
-> **Notice**: You will not be able to run these benchmarks without the data files which I didn't include in the repo (for size reasons).
-> TODO: add a git submodule.
+Thank you to these authors for compiling the benchmarks!
 
 After running those benchmarks in my computer, this library is on par or slightly better than [rust-csv](https://github.com/BurntSushi/rust-csv) and [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser) and around 2x faster than the Java libraries (which makes sense because in zig it is possible to avoid a lot of allocations relative to Java). You can find more info in the [benchmarks documentation](/docs/benchmarks.md).
