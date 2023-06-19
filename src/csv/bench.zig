@@ -115,31 +115,35 @@ const IntId = struct {
 };
 
 pub fn countRows(comptime T: type, file_path: []const u8) anyerror!void {
-    var file = try fs.cwd().openFile(file_path, .{});
-    defer file.close();
-
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    // const allocator = arena.allocator();
-
-    var buffer: [4096 * 10]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const allocator = fba.allocator();
-
-    const start_ms = std.time.milliTimestamp();
-
     const Parser = parse.CsvParser(T, fs.File.Reader, .{});
-    var parser = try Parser.init(allocator, file.reader());
-    var count: u64 = 0;
-    while (try parser.next()) |_| {
-        count = count + 1;
-        fba.reset();
+
+    const loops = 10;
+
+    var ms_duration: i64 = 0;
+    var i: usize = 0;
+    while (i < loops) {
+        var file = try fs.cwd().openFile(file_path, .{});
+        defer file.close();
+
+        var buffer: [4096 * 10]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buffer);
+        const allocator = fba.allocator();
+
+        var count: u64 = 0;
+        const start_ms = std.time.milliTimestamp();
+        var parser = try Parser.init(allocator, file.reader());
+        while (try parser.next()) |_| {
+            count = count + 1;
+            fba.reset();
+        }
+
+        const end_ms = std.time.milliTimestamp();
+        ms_duration += end_ms - start_ms;
+
+        i = i + 1;
     }
-    const end_ms = std.time.milliTimestamp();
 
-    const ms_duration = end_ms - start_ms;
-
-    std.debug.print("Parsed {} rows in {}ms -- {s}\n", .{ count, ms_duration, @typeName(T) });
+    std.debug.print("Parsed in {}ms on average -- {s}\n", .{ @divTrunc(ms_duration, loops), @typeName(T) });
 }
 
 pub fn benchmarkWorldCities(print: bool) anyerror!i64 {

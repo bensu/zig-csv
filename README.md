@@ -433,20 +433,22 @@ test "buffer end to end" {
 
 # Informal benchmarks
 
-In my M1, this library can run over a 144Mb CSV file in 443ms if it parses every column and 292ms if it only extracts a few fields:
+In my M1, this library can run over a 144Mb CSV file in 418ms if it parses every column and 301ms if it only extracts a few fields:
 
 ```sh
 $ zig build -Drelease-fast=true; zig-out/bin/csv
 
 Starting benchmark
-Parsed 9999 rows in 5ms -- bench.NFL                   // 1.3Mb all columns
-Parsed 3173958 rows in 435ms -- bench.FullPopulation   // 144Mb all columns
-Parsed 3173958 rows in 291ms -- bench.Population       // 144Mb few columns
-Parsed 9999 rows in 1ms -- bench.MBTA                  // 707Kb all columns
-Parsed 703661 rows in 262ms -- bench.Trade             // 150Mb all columns
-Parsed 246497 rows in 122ms -- bench.StateDepartment   // 709Mb all columns
-Number of US-MA population: 5988064 in 416 ms          // 144Mb all columns
-Total population: 2289584999 in 269 ms                 // 144Mb few columns
+Parsed in 4ms on average     -- bench.NFL               // 1.3MB all columns, 325 MB/s
+Parsed in 418ms on average   -- bench.FullPopulation    // 144MB all columns, 344 MB/s
+Parsed in 301ms on average   -- bench.Population        // 144MB few columns, 478 MB/s
+Parsed in 1ms on average     -- bench.MBTA              // N/A 1ms might be off by 50%
+Parsed in 263ms on average   -- bench.Trade             // 150MB all columns, 570 MB/s
+Parsed in 117ms on average   -- bench.StateDepartment   //  70MB all columns, 598 MB/s
+Number of US-MA population: 5988064 in 420 ms           // 144MB all columns, 342 MB/s
+Total population: 2289584999 in 291 ms                  // 144MB few columns, 494 MB/s
+```
+
 ```
 
 I took these benchmark files from these great projects:
@@ -457,7 +459,8 @@ I took these benchmark files from these great projects:
 
 Thank you to these author's for compiling the benchmarks.
 
-After running those benchmarks in my computer, this library is on par or slightly better than [rust-csv](https://github.com/BurntSushi/rust-csv) and [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser) and around 2x faster than the Java libraries (which makes sense because in zig it is possible to avoid a lot of allocations relative to Java).
-
 > **Notice**: You will not be able to run these benchmarks without the data files which I didn't include in the repo (for size reasons).
 > TODO: add a git submodule.
+
+After running those benchmarks in my computer, this library is on par or slightly better than [rust-csv](https://github.com/BurntSushi/rust-csv) and [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser) and around 2x faster than the Java libraries (which makes sense because in zig it is possible to avoid a lot of allocations relative to Java). You can find more info in the [benchmarks documentation](/docs/benchmarks.md).
+```
