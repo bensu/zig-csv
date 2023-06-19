@@ -1,6 +1,6 @@
 # zig-csv
 
-Parses CSV into structs that you define.
+A library to parse CSV files into user-defined structs.
 
 > **Disclaimer**: I haven't used this in production and I don't know how it would fare there. I made this to learn zig.
 
@@ -22,16 +22,16 @@ README.md	build.zig	data		src		test
 2. Add it as a package in your `build.zig`:
 
 ```zig
-    const exe = b.addExecutable("your-app", "src/main.zig");
-    exe.addPackage(.{
-        .name = "csv",
-        .source = .{ .path = "vendor/csv/src/csv.zig" },
-    });
+const exe = b.addExecutable("your-app", "src/main.zig");
+exe.addPackage(.{
+    .name = "csv",
+    .source = .{ .path = "vendor/csv/src/csv.zig" },
+});
 ```
 
 ### Parse
 
-Consider the following CSV file:
+Consider the following CSV file `test/data/pokemon_example.csv`:
 
 ```csv
 id,name,captured,color,health,
@@ -40,7 +40,7 @@ id,name,captured,color,health,
 3,pikachu,true,yellow,10.0,
 ```
 
-You can define a struct that describes what you expect to find in it and parses it:
+You can define a struct with you expect to find in it and then parse it with an iterator:
 
 ```zig
 const std = @import("std");
@@ -89,7 +89,7 @@ test "parsing pokemon" {
 
 ### Serialize
 
-Now, instead of parsing the file, we are going to serialize it from in-memory data:
+Now, instead of parsing the file, we are going to serialize the same contents from in-memory data into `tmp/pokemon.csv`:
 
 ```zig
 test "serializing pokemon" {
@@ -102,7 +102,7 @@ test "serializing pokemon" {
     defer arena.deinit();
 
     const config: csv.CsvConfig = .{};
-    const PokemonCsvSerializer = csv.CsvSerializer(Pokemon, config);
+    const PokemonCsvSerializer = csv.CsvSerializer(Pokemon, fs.File.Writer, config);
     var serializer = PokemonCsvSerializer.init(writer);
 
     const pokemons = [3]Pokemon{
@@ -137,11 +137,9 @@ test "serializing pokemon" {
 }
 ```
 
-`tmp/pokemon.csv` should now have the same contents as the CSV above, header included.
+`tmp/pokemon.csv` should now have the same contents as `test/data/pokemon_example.csv` above, header included.
 
 ## API Reference
-
-TODO: document errors
 
 ```zig
 pub const CsvConfig = struct {
@@ -200,8 +198,8 @@ const CsvParseSpecificError = error{
     OutOfMemory,
 };
 
-pub const ReaderError = error { ... }; // from the reader, e.g. fs.File.Reader
-pub const WriterError = error { ... }; // from the writer, e.g. fs.File.Writer
+pub const ReaderError = error { ... }; // from reader.read(), e.g. fs.File.Reader
+pub const WriterError = error { ... }; // from writer.write(), e.g. fs.File.Writer
 
 pub const CsvParseError = CsvParseSpecificError || ReaderError;
 ```
@@ -232,7 +230,7 @@ var parser = csv.CsvParser(StructType, fs.File.Reader, config).init(reader);
 var total: u32 = 0;
 while (try parser.next()) |row| {
     // do something with the row
-    if (std.mem.eql(u8, "important", row.str_field)) {
+    if (std.mem.eql(u8, "special_value", row.str_field)) {
         total += row.int_field;
     }
 }
@@ -449,8 +447,6 @@ Number of US-MA population: 5988064 in 420 ms           // 144MB all columns, 34
 Total population: 2289584999 in 291 ms                  // 144MB few columns, 494 MB/s
 ```
 
-```
-
 I took these benchmark files from these great projects:
 
 - [rust-csv](https://github.com/BurntSushi/rust-csv)
@@ -463,4 +459,3 @@ Thank you to these author's for compiling the benchmarks.
 > TODO: add a git submodule.
 
 After running those benchmarks in my computer, this library is on par or slightly better than [rust-csv](https://github.com/BurntSushi/rust-csv) and [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser) and around 2x faster than the Java libraries (which makes sense because in zig it is possible to avoid a lot of allocations relative to Java). You can find more info in the [benchmarks documentation](/docs/benchmarks.md).
-```
