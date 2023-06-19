@@ -433,75 +433,31 @@ test "buffer end to end" {
 
 # Informal benchmarks
 
-In my M1, this library can run the following code in `src/csv/bench.zig` over a 150Mb CSV file in 286ms:
-
-```zig
-const Population = struct {
-    country: []const u8,
-    city: void,
-    accent_city: void,
-    region: []const u8,
-    population: ?u64,
-    latitude: void,
-    longitude: void,
-};
-
-const file_path = "benchmark/data/worldcitiespop.csv";
-var file = try fs.cwd().openFile(file_path, .{});
-defer file.close();
-
-var buffer: [4096 * 10]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&buffer);
-const allocator = fba.allocator();
-
-var parser = try csv.CsvParser(Population, fs.File.Reader, .{}).init(allocator, file.reader());
-var population: u64 = 0;
-while (try parser.next()) |row| {
-    if (std.mem.eql(u8, "us", row.country) and std.mem.eql(u8, "MA", row.region)) {
-        population += (row.population orelse 0);
-    }
-    fba.reset();
-}
-std.debug.print("Number of US-MA population: {}\n", .{population});
-```
-
-Notice that it is only reading two strings and an int from each row.
-
-You can replicate in your computer with:
+In my M1, this library can run over a 144Mb CSV file in 443ms if it parses every column and 292ms if it only extracts a few fields:
 
 ```sh
 $ zig build -Drelease-fast=true; zig-out/bin/csv
 
 Starting benchmark
-Average time: 286 ms
+Parsed 9999 rows in 5ms -- bench.NFL                   // 1.3Mb all columns
+Parsed 3173958 rows in 435ms -- bench.FullPopulation   // 144Mb all columns
+Parsed 3173958 rows in 291ms -- bench.Population       // 144Mb few columns
+Parsed 9999 rows in 1ms -- bench.MBTA                  // 707Kb all columns
+Parsed 703661 rows in 262ms -- bench.Trade             // 150Mb all columns
+Parsed 246497 rows in 122ms -- bench.StateDepartment   // 709Mb all columns
+Number of US-MA population: 5988064 in 416 ms          // 144Mb all columns
+Total population: 2289584999 in 269 ms                 // 144Mb few columns
 ```
 
-To parse every column in the file, we change the type being parsed:
+I took these benchmark files from these great projects:
 
-```diff
-+ const FullPopulation = struct {
-+     country: []const u8,
-+     city: []const u8,
-+     accent_city: []const u8,
-+     region: []const u8,
-+     population: ?u32,
-+     latitude: f64,
-+     longitude: f64,
-+ };
+- [rust-csv](https://github.com/BurntSushi/rust-csv)
+- [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser)
+- [java/csv-benchmark](https://github.com/skjolber/csv-benchmark)
 
--    const PopulationParser = parse.CsvParser(Population, fs.File.Reader, .{});
-+    const PopulationParser = parse.CsvParser(FullPopulation, fs.File.Reader, .{});
-```
+Thank you to these author's for compiling the benchmarks.
 
-```sh
-$ zig build -Drelease-fast=true; zig-out/bin/csv
+After running those benchmarks in my computer, this library is on par or slightly better than [rust-csv](https://github.com/BurntSushi/rust-csv) and [cpp/csv-parser](https://github.com/vincentlaucsb/csv-parser) and around 2x faster than the Java libraries (which makes sense because in zig it is possible to avoid a lot of allocations relative to Java).
 
-Starting benchmark
-Average time: 403 ms
-```
-
-I took this benchmark from the awesome [rust-csv](https://github.com/BurntSushi/rust-csv).
-
-# Acknowledgements
-
-Thank you [BurntSushi](https://github.com/BurntSushi) from doing such a great job with [rust-csv](https://github.com/BurntSushi/rust-csv). It is well-documented, well-tested, and has great benchmarks.
+> **Notice**: You will not be able to run these benchmarks without the data files which I didn't include in the repo (for size reasons).
+> TODO: add a git submodule.

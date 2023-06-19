@@ -78,6 +78,37 @@ const Trade = struct {
     title_5: []const u8,
 };
 
+const StateDepartment = struct {
+    year: []const u8,
+    entity_type: []const u8,
+    entity_group: []const u8,
+    entity_name: []const u8,
+    department_subdivision: []const u8,
+    position: []const u8,
+    elected_official: []const u8,
+    judicial: []const u8,
+    other_positions: []const u8,
+    min_classification_salary: []const u8,
+    max_classification_salary: []const u8,
+    reported_base_wage: []const u8,
+    regular_pay: []const u8,
+    overtime_pay: []const u8,
+    lump_sum_pay: []const u8,
+    other_pay: []const u8,
+    total_wages: []const u8,
+    defined_benefit_plan_contribution: []const u8,
+    employees_retirement_cost_covered: []const u8,
+    deferred_compensation_plan: []const u8,
+    health_dental_vision: []const u8,
+    total_retirement_and_health_cost: []const u8,
+    pension_formula: []const u8,
+    entity_url: []const u8,
+    entity_population: []const u8,
+    last_updated: []const u8,
+    entity_county: []const u8,
+    special_district_activities: []const u8,
+};
+
 const IntId = struct {
     id: i64,
     age: []const u8,
@@ -170,19 +201,29 @@ pub fn benchmarkCountAllPopulation(print: bool) anyerror!i64 {
     return ms_duration;
 }
 
-const Benchmarks = enum { NFL, FullPopulation, VoidPopulation, MBTA, Trades, CountPopulation, CountAllPopulation };
+const Benchmarks = enum {
+    NFL,
+    FullPopulation,
+    VoidPopulation,
+    MBTA,
+    Trades,
+    StateDepartment,
+    CountPopulation,
+    CountAllPopulation,
+};
 
 pub fn benchmark() !void {
-    if (false) {
+    if (true) {
         for (std.enums.values(Benchmarks)) |e| {
             switch (e) {
                 .NFL => try countRows(NFL, "benchmark/data/nfl.csv"),
-                .CountPopulation => try benchmarkWorldCities(true),
-                .CountAllPopulation => try benchmarkCountAllPopulation(true),
+                .CountPopulation => _ = try benchmarkWorldCities(true),
+                .CountAllPopulation => _ = try benchmarkCountAllPopulation(true),
                 .FullPopulation => try countRows(FullPopulation, "benchmark/data/worldcitiespop.csv"),
                 .VoidPopulation => try countRows(Population, "benchmark/data/worldcitiespop.csv"),
                 .MBTA => try countRows(MBTA, "benchmark/data/mbta.csv"),
                 .Trades => try countRows(Trade, "benchmark/data/trade-indexes.csv"),
+                .StateDepartment => try countRows(StateDepartment, "benchmark/data/state_department_2015.csv"),
             }
         }
     } else {
