@@ -30,6 +30,7 @@ pub const ReaderError = error{
     SystemResources,
     Unexpected,
     WouldBlock,
+    NetNameDeleted,
 };
 
 const InternalError = error{ EndOfStream, OutOfMemory };

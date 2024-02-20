@@ -1,33 +1,34 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
+pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
-    const mode = b.standardReleaseOptions();
+    const module = b.addModule("csv", .{
+        .source_file = .{ .path = "src/csv.zig" },
+    });
 
-    const exe = b.addExecutable("csv", "src/csv/main.zig");
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.install();
+    try b.modules.put(b.dupe("csv"), module);
 
-    const run_cmd = exe.run();
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
+    const exe = b.addExecutable(.{
+        .name = "csv",
+        .root_source_file = .{ .path = "src/csv/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    b.installArtifact(exe);
+    const run_exe = b.addRunArtifact(exe);
     const run_step = b.step("run", "Run the app");
-    run_step.dependOn(&run_cmd.step);
+    if (b.args) |args| {
+        run_exe.addArgs(args);
+    }
+    run_step.dependOn(&run_exe.step);
 
-    const exe_tests = b.addTest("src/csv/main.zig");
-    exe_tests.setTarget(target);
-    exe_tests.setBuildMode(mode);
+    const exe_tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/csv/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
