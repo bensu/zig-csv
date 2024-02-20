@@ -46,7 +46,7 @@ pub inline fn parseAtomic(
                 return error.BadInput;
             } else {
                 // we generate the first enum outside of the possible enums
-                return @intToEnum(T, i);
+                return @as(T, @enumFromInt(i));
             }
         },
         else => {
@@ -187,7 +187,7 @@ pub fn CsvParser(
                         // we need to grab what we read, copy it somewhere it will remain valid
                         // and then give them that slice
 
-                        const FieldInfo = @typeInfo(F.field_type);
+                        const FieldInfo = @typeInfo(F.type);
                         switch (FieldInfo) {
                             .Void => {
                                 @field(draft_struct, F.name) = {};
@@ -235,7 +235,7 @@ pub fn CsvParser(
                                 }
                             },
                             else => {
-                                @field(draft_struct, F.name) = try parseAtomic(F.field_type, F.name, field);
+                                @field(draft_struct, F.name) = try parseAtomic(F.type, F.name, field);
                             },
                         }
                         fields_added = fields_added + 1;
@@ -653,7 +653,7 @@ test "parse enums" {
         const expected_row = EnumParse{
             .id = 333,
             .is_on = OnOff.ON,
-            .color = @intToEnum(Color, 3),
+            .color = @as(Color, @enumFromInt(3)),
             .unit = {},
             .nilable = 3333,
         };
